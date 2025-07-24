@@ -49,10 +49,9 @@ jobs:
       contents: write
 
     steps:
-      - name: Check Out
+      - name: Check Out Repository
         uses: actions/checkout@v3
 
-      - name: Cleanup
       - name: Cleanup Preinstalled Tools to Free Space
         run: |
           sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
@@ -64,11 +63,11 @@ jobs:
         uses: rokibhasansagar/slimhub_actions@main
 
       - name: Set Up Workspace Directory
+        id: pwd
         run: |
           mkdir workspace
           cd workspace
           echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
-        id: pwd
 
       - name: Prepare the Build Environment
         run: |
@@ -94,51 +93,48 @@ jobs:
           distribution: temurin
           java-version: 11
 
-      - name: Sync OrangeFox sources and minimal manifest
+      - name: Sync OrangeFox Sources
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
           git clone ${{ github.event.inputs.SYNC_URL }}
           cd sync
-          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
 
-      - name: Clone device tree
+      - name: Clone Device Tree
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
-      - name: Clone common tree
-        if: |
-          github.event.inputs.COMMON_TREE_URL != null && github.event.inputs.COMMON_PATH != null
+      - name: Clone Common Tree (if provided)
+        if: ${{ github.event.inputs.COMMON_TREE_URL != '' && github.event.inputs.COMMON_PATH != '' }}
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 12
 
-      - name: Building recovery
+      - name: Build Recovery Image
+        continue-on-error: true
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           set +e
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
           set -e
-          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng && make clean && mka adbd ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-        continue-on-error: true
+          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
+          make clean
+          mka adbd ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
 
-      - name: Check the output directory before uploading
+      - name: List Output Files
         run: |
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/
           echo
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/
 
-      - name: Upload to Release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -147,8 +143,8 @@ jobs:
           name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
           tag_name: ${{ github.run_id }}
           body: |
-            Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
-            Device: ${{ github.event.inputs.DEVICE_NAME }}
-            Target: ${{ github.event.inputs.BUILD_TARGET }}
+            Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}
+            Device Name: ${{ github.event.inputs.DEVICE_NAME }}
+            Build Target: ${{ github.event.inputs.BUILD_TARGET }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
