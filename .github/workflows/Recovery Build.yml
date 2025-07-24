@@ -108,7 +108,7 @@ jobs:
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
           if [ ! -d "fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo" ]; then
-            git clone ${{ github.event.inputs.SYNC_URL }}
+            git clone ${{ github.event.inputs.SYNC_URL }} sync
             cd sync
             ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           else
@@ -121,7 +121,7 @@ jobs:
           git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
 
       - name: Clone Common Tree (if set)
-        if: github.event.inputs.COMMON_TREE_URL != ''
+        if: ${{ github.event.inputs.COMMON_TREE_URL != '' }}
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
@@ -159,4 +159,3 @@ jobs:
             Target: ${{ github.event.inputs.BUILD_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          
