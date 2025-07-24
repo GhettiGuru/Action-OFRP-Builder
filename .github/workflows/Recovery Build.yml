@@ -10,7 +10,7 @@ on:
       MANIFEST_BRANCH:
         description: 'MANIFEST_BRANCH'
         required: true
-        default: '12.1'
+        default: 'fox_12.1'
       DEVICE_TREE_URL:
         description: 'DEVICE_TREE_URL'
         required: true
@@ -49,7 +49,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Check Out Repository
+      - name: Check Out
         uses: actions/checkout@v3
 
       - name: Cleanup Preinstalled Tools to Free Space
@@ -63,11 +63,11 @@ jobs:
         uses: rokibhasansagar/slimhub_actions@main
 
       - name: Set Up Workspace Directory
-        id: pwd
         run: |
           mkdir workspace
           cd workspace
           echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
+        id: pwd
 
       - name: Prepare the Build Environment
         run: |
@@ -93,48 +93,58 @@ jobs:
           distribution: temurin
           java-version: 11
 
-      - name: Sync OrangeFox Sources
+      - name: Cache OrangeFox Source
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          key: ofox-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ hashFiles('**/default.xml') }}
+          restore-keys: |
+            ofox-${{ github.event.inputs.MANIFEST_BRANCH }}-
+
+      - name: Sync OrangeFox sources and minimal manifest
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
           git clone ${{ github.event.inputs.SYNC_URL }}
           cd sync
-          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
-      - name: Clone Device Tree
+      - name: Clone device tree
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
-      - name: Clone Common Tree (if provided)
-        if: ${{ github.event.inputs.COMMON_TREE_URL != '' && github.event.inputs.COMMON_PATH != '' }}
+      - name: Clone common tree
+        if: github.event.inputs.COMMON_TREE_URL != '' && github.event.inputs.COMMON_PATH != ''
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 12
 
-      - name: Build Recovery Image
-        continue-on-error: true
+      - name: Building recovery
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           set +e
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
           set -e
-          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
-          make clean
-          mka adbd ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng && make clean && mka adbd ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+        continue-on-error: true
 
-      - name: List Output Files
+      - name: Check the output directory before uploading
         run: |
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/
           echo
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/
 
-      - name: Upload to GitHub Release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -143,8 +153,8 @@ jobs:
           name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
           tag_name: ${{ github.run_id }}
           body: |
-            Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}
-            Device Name: ${{ github.event.inputs.DEVICE_NAME }}
-            Build Target: ${{ github.event.inputs.BUILD_TARGET }}
+            Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
+            Device: ${{ github.event.inputs.DEVICE_NAME }}
+            Target: ${{ github.event.inputs.BUILD_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
