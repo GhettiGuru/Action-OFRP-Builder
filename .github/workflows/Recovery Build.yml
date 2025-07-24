@@ -59,17 +59,10 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-            ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build
-            ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/bootable
-            ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device
-            ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/prebuilts
-            ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/system
-            ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor
-            ${{ github.workspace }}/workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/hardware
-          key: ofrp-source-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ runner.os }}-v1
+          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ runner.os }}-v1
           restore-keys: |
-            ofrp-source-${{ github.event.inputs.MANIFEST_BRANCH }}-
-            ofrp-source-
+            ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}-
+            ofrp-repo-
 
       - name: Clean Workspace
         uses: rokibhasansagar/slimhub_actions@main
