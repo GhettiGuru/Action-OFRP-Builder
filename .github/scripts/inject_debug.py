@@ -21,6 +21,7 @@ for filepath in files_to_patch:
 
     modified = []
     injected = False
+
     for line in lines:
         # Inject debug echo once at the start
         if not injected:
@@ -30,12 +31,19 @@ for filepath in files_to_patch:
         # Check for Android.mk presence checks
         mk_match = re.search(r"\[ -s ([^\]]*Android\.mk) \]", line)
         if mk_match:
-            mk_path = mk_match.group(1)
-            modified.append(f'if [ ! -s {mk_path} ]; then echo "WARNING: Missing or empty {mk_path} ignored"; fi\n')
+            mk_path = mk_match.group(1).strip('"')
+            modified.append(f'if [ ! -s {mk_path} ]; then\n')
+            modified.append(f'  echo "WARNING: Missing or empty {mk_path} ignored" >&2\n')
+            modified.append(f'else\n')
 
+        # Always add original line
         modified.append(line)
+
+        # If we injected an `if`, close it after the original line
+        if mk_match:
+            modified.append('fi\n')
 
     with open(filepath, "w") as f:
         f.writelines(modified)
 
-    print(f"Injected debug and ignore lines into {filepath}")
+    print(f"Injected debug and Android.mk guard into {filepath}")
