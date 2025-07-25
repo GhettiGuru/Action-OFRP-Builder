@@ -91,14 +91,13 @@ jobs:
           mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
           echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
 
-      - name: Restore OrangeFox .repo Cache
-        uses: actions/cache@v4
-        with:
-          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
-          restore-keys: |
-            ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}-
-            ofrp-repo-
+      - name: Sync OrangeFox sources and minimal manifest
+        run: |
+         cd ${{ steps.pwd.outputs.workspace-folder }}
+         git clone ${{ github.event.inputs.SYNC_URL }}
+         cd sync
+         ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
       - name: Sync OrangeFox sources
         run: |
@@ -114,6 +113,7 @@ jobs:
 
       # This optional step helps verify that the device tree is cloned properly
       # This optional step helps verify that the device tree is cloned properly
+     
       - name: Debug:List device tree
         run: |
           ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
