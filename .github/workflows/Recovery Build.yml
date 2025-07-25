@@ -138,7 +138,7 @@ jobs:
 
       - name: Build Recovery Image
         run: |
-          set -xeuo pipefail
+          set -xeo pipefail
           cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           touch build.log
           {
@@ -159,7 +159,7 @@ jobs:
         run: |
           set -xeo pipefail
           cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          touch build.log  # Ensure the file exists
+          touch build.log
           {
             set +u
             source build/envsetup.sh
@@ -171,7 +171,7 @@ jobs:
             [[ -s frameworks/base/services/core/xsd/vts/Android.mk ]] || true
             lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
             make -j$(nproc) recoveryimage
-          } 2>&1 | tee build.log
+          } 2>&1 | tee -a build.log
         continue-on-error: true
 
       - name: Check output files
