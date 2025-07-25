@@ -14,7 +14,7 @@ on:
       DEVICE_TREE_URL:
         description: 'DEVICE_TREE_URL'
         required: true
-        default: 'https://github.com/GhettiGuru/Nubia-Redmagic-8s-Pro-TWRPTree/tree/NX729J-user-13-TKQ1.221013.002-eng.nubia.20230808.003009-release-keys'
+        default: 'https://github.com/GhettiGuru/Nubia-Redmagic-8s-Pro-TWRPTree/tree/android_12.1'
       DEVICE_TREE_BRANCH:
         description: 'DEVICE_TREE_BRANCH'
         required: true
