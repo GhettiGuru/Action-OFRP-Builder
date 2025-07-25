@@ -49,7 +49,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Check Out
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Restore Android SDK Cache
@@ -62,7 +62,6 @@ jobs:
           key: android-sdk-${{ runner.os }}
 
       - name: Cleanup Preinstalled Tools to Free Space
-        shell: bash
         run: |
           set -x
           sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
@@ -75,7 +74,6 @@ jobs:
 
       - name: Set Up Workspace Directory
         id: pwd
-        shell: bash
         run: |
           set -x
           mkdir workspace
@@ -83,7 +81,6 @@ jobs:
           echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
 
       - name: Prepare Build Environment
-        shell: bash
         run: |
           set -x
           sudo apt update
@@ -108,7 +105,6 @@ jobs:
           java-version: 11
 
       - name: Sync OrangeFox sources
-        shell: bash
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}
@@ -116,14 +112,17 @@ jobs:
           cd sync
           ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
 
-      - name: Save OrangeFox Source Cache
-        uses: actions/cache/save@v4
+      - name: Cache OrangeFox .repo after sync
+        uses: actions/cache@v4
         with:
-          path: ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          key: orangefox-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ github.run_id }}
+          path: |
+            workspace/fox_12.1/.repo
+            workspace/fox_12.1/default.xml
+          key: ofrp-repo-${{ github.sha }}
+          restore-keys: |
+            ofrp-repo-
 
       - name: Clone Device Tree
-        shell: bash
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
@@ -131,7 +130,6 @@ jobs:
 
       - name: Clone Common Tree (if defined)
         if: github.event.inputs.COMMON_TREE_URL != ''
-        shell: bash
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
@@ -143,29 +141,35 @@ jobs:
           swap-size-gb: 12
 
       - name: Build Recovery Image
-        shell: bash
-        continue-on-error: true
         run: |
-          set -x
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          set -xeuo pipefail
+          cd workspace/fox_12.1
           source build/envsetup.sh
+          source vendor/twrp/build/envsetup.sh || true
           export ALLOW_MISSING_DEPENDENCIES=true
-          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
-          make clean
-          mka ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all) | tee build.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          echo "Build exited with code $EXIT_CODE"
-          echo "======== LOG TAIL ==========="
-          tail -n 100 build.log
-          exit $EXIT_CODE
+          export OUT_DIR=$(pwd)/out
+          export OUT=$OUT_DIR
+          lunch ${{ github.event.inputs.DEVICE_NAME }}-eng || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
+          make -j$(nproc) ${{ github.event.inputs.BUILD_TARGET }}image 2>&1 | tee build.log
+        continue-on-error: true
 
-      - name: List Output Files
-        shell: bash
+      - name: Check output files
         run: |
           set -x
-          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/
-          echo
-          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/
+          ls -al workspace/fox_12.1/out/target/product || true
+          ls -al workspace/fox_12.1/out/target/product/* || true
+
+      - name: Show build log (tail)
+        run: |
+          echo "::group::Last 100 lines of build.log"
+          tail -n 100 workspace/fox_12.1/build.log || true
+          echo "::endgroup::"
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: workspace/fox_12.1/build.log
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
