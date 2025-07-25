@@ -121,7 +121,7 @@ jobs:
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
       - name: Inject debug print statements
-        run: python3 scripts/inject_debug.py
+        run: python3 .github/scripts/inject_debug.py
         env:
           BUILD_TOP_PATH: "${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
 
