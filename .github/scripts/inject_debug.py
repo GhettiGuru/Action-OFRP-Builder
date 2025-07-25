@@ -25,17 +25,22 @@ def inject_debug_lines(file_path):
             updated_lines.append(line)
             continue
 
-        # Avoid injecting inside multi-line assignments like T=$(pwd)
-        assignment_match = re.match(r'^\s*(\w+)\s*=.*', line)
-        if assignment_match and 'pwd' in line:
+        # Avoid injecting after control structure closures
+        if stripped in {"fi", "done", "esac"}:
             updated_lines.append(line)
-            updated_lines.append(f'echo "[DEBUG] {file_path}:{idx+1} - {assignment_match.group(1)} set to $(pwd)"\n')
             continue
 
-        # Inject echo for common shell functions and commands
-        if re.match(r'^\s*(if|for|while|case|function|\w+\(\))\b', stripped):
+        # Avoid injecting after assignments or lines with subshells
+        if re.match(r'^\s*\w+\s*=\s*\$\(.+\)', stripped):
             updated_lines.append(line)
-            updated_lines.append(f'echo "[DEBUG] {file_path}:{idx+1} - Entered: {stripped.split()[0]}"\n')
+            updated_lines.append(f'echo "[DEBUG] {file_path}:{idx+1} - Assignment: {stripped}"\n')
+            continue
+
+        # Inject echo after function declarations
+        if re.match(r'^\s*(function\s+\w+|\w+\s*\(\))\s*\{?', stripped):
+            updated_lines.append(line)
+            func_name = re.findall(r'\w+', stripped)[0]
+            updated_lines.append(f'echo "[DEBUG] {file_path}:{idx+1} - Entered function: {func_name}"\n')
             continue
 
         updated_lines.append(line)
