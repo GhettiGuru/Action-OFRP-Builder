@@ -56,9 +56,8 @@ jobs:
         id: orangefox-cache
         uses: actions/cache@v4
         with:
-          path: |
-            fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          key: orangefox-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ github.run_id }}
+          path: fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          key: orangefox-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ hashFiles('.github/workflows/**') }}
 
       - name: Restore Android SDK Cache
         id: android-sdk-cache
@@ -68,7 +67,7 @@ jobs:
             ~/.android
             ~/android-sdk
             /usr/local/lib/android
-          key: android-sdk-${{ runner.os }}-${{ github.run_id }}
+          key: android-sdk-${{ runner.os }}
 
       - name: Cleanup Preinstalled Tools to Free Space
         shell: bash
@@ -118,9 +117,16 @@ jobs:
         shell: bash
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
-          git clone ${{ github.event.inputs.SYNC_URL }}
+          git clone ${{ github.event.inputs.SYNC_URL }} sync
           cd sync
           ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+
+      - name: Save OrangeFox Source Cache (after sync)
+        if: steps.orangefox-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          key: orangefox-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ github.run_id }}
 
       - name: Clone device tree
         shell: bash
@@ -162,37 +168,6 @@ jobs:
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/
           echo
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/
-
-      - name: Debug OrangeFox Directory Contents
-        shell: bash
-        run: |
-          echo "Debugging contents of OrangeFox path:"
-          ls -al fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-
-      - name: Ensure cache folders exist
-        shell: bash
-        run: |
-          mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          mkdir -p ~/.android
-          mkdir -p ~/android-sdk
-          mkdir -p /usr/local/lib/android
-
-      - name: Save OrangeFox Source Cache (manual step)
-        if: steps.orangefox-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          key: orangefox-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ github.run_id }}
-
-      - name: Save Android SDK Cache (manual step)
-        if: steps.android-sdk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/.android
-            ~/android-sdk
-            /usr/local/lib/android
-          key: android-sdk-${{ runner.os }}-${{ github.run_id }}
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
