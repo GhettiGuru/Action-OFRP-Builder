@@ -150,8 +150,166 @@ jobs:
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
+name: Recovery Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      SYNC_URL:
+        description: 'SYNC_URL'
+        required: true
+        default: 'https://gitlab.com/OrangeFox/sync.git'
+      MANIFEST_BRANCH:
+        description: 'MANIFEST_BRANCH'
+        required: true
+        default: '12.1'
+      DEVICE_TREE_URL:
+        description: 'DEVICE_TREE_URL'
+        required: true
+        default: 'https://github.com/GhettiGuru/Redmagic-8-tree'
+      DEVICE_TREE_BRANCH:
+        description: 'DEVICE_TREE_BRANCH'
+        required: true
+        default: 'android_12.1'
+      DEVICE_PATH:
+        description: 'DEVICE_PATH'
+        required: true
+        default: 'device/nubia/nxj729un'
+      COMMON_TREE_URL:
+        description: 'COMMON_TREE_URL (optional)'
+        required: false
+      COMMON_PATH:
+        description: 'COMMON_PATH (optional)'
+        required: false
+      DEVICE_NAME:
+        description: 'DEVICE_NAME'
+        required: true
+        default: 'twrp_nx729j'
+      MAKEFILE_NAME:
+        description: 'MAKEFILE_NAME'
+        required: true
+        default: 'twrp_nx729j'
+      BUILD_TARGET:
+        description: 'BUILD_TARGET'
+        required: true
+        default: 'twrp_nx729j-eng'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Restore Android SDK Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android
+            ~/android-sdk
+            /usr/local/lib/android
+          key: android-sdk-${{ runner.os }}
+
+      - name: Clean Preinstalled Tools
+        run: |
+          set -x
+          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
+
+      - name: Set Up Workspace
+        id: pwd
+        run: |
+          set -x
+          mkdir workspace
+          cd workspace
+          echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
+
+      - name: Install Build Dependencies
+        run: |
+          set -x
+          sudo apt update && sudo apt install -y \
+            bc bison build-essential ccache curl flex g++-multilib \
+            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
+            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+            libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk aria2
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Restore OrangeFox .repo Cache
+        uses: actions/cache@v4
+        with:
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
+          restore-keys: |
+            ofrp-repo-
+
+      - name: Clone & Sync OrangeFox Sources
+        run: |
+          set -x
+          cd ${{ steps.pwd.outputs.workspace-folder }}
+
+          # Clone sync scripts
+          git clone ${{ github.event.inputs.SYNC_URL }} sync
+          cd sync
+
+          # Run sync with fast options
+          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} \
+            --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+
+          cd ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          repo sync -c -j$(nproc) --no-tags --no-clone-bundle
+
+      - name: Save OrangeFox .repo Cache
+        uses: actions/cache/save@v4
+        with:
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ github.sha }}
+
+      - name: Clone Device Tree
+        run: |
+          set -x
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+
+      - name: Clone Common Tree (if defined)
+        if: github.event.inputs.COMMON_TREE_URL != ''
+        run: |
+          set -x
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
           swap-size-gb: 12
 
+      - name: Build Recovery Image
+        run: |
+          set -xeuo pipefail
+          cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          source build/envsetup.sh
+          source vendor/twrp/build/envsetup.sh || true
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export OUT_DIR=$(pwd)/out
+          export OUT=$OUT_DIR
+
+          # Fix Android.mk error if needed
+          touch frameworks/base/services/core/xsd/vts/Android.mk
+
+          lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
+          make -j$(nproc) recoveryimage 2>&1 | tee build.log
+        continue-on-error: true
+        
       - name: Build Recovery Image
         run: |
           set -xeo pipefail
@@ -170,7 +328,7 @@ jobs:
             make -j$(nproc) recoveryimage
           } 2>&1 | tee build.log
         continue-on-error: true
-
+        
       - name: Check output files
         run: |
           set -x
@@ -193,7 +351,7 @@ jobs:
           name: build-log
           path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
 
-      - name: Upload to GitHub Release
+      - name: Upload Build Output
         uses: softprops/action-gh-release@v1
         with:
           files: |
