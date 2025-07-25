@@ -37,10 +37,12 @@ on:
         description: 'MAKEFILE_NAME'
         required: true
         default: 'twrp_nx729j'
-      BUILD_TARGET:
-        description: 'BUILD_TARGET'
+      BUILD_VARIANT:
+        description: 'Build variant (eng or userdebug)'
         required: true
-        default: 'twrp_nx729j'
+        default: 'eng'
+
+
 
 jobs:
   build:
@@ -144,7 +146,7 @@ jobs:
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
             touch frameworks/base/services/core/xsd/vts/Android.mk
-            lunch ${{ github.event.inputs.DEVICE_NAME }}-eng || lunch ${{ github.event.inputs.DEVICE_NAME }}-eng
+            lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}
             make -j$(nproc) recoveryimage
           } 2>&1 | tee build.log
         continue-on-error: true
