@@ -113,7 +113,7 @@ jobs:
           repo sync -c -j$(nproc) --no-tags --no-clone-bundle
 
       # This optional step helps verify that the device tree is cloned properly
-      - name: Debug: List device tree
+      - name: Debug:List device tree
         run: |
           ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
 
