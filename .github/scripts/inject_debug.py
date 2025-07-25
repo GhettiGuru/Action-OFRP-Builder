@@ -1,9 +1,10 @@
 import os
 import re
 import subprocess
+import shlex
 
 def normalize_line_endings(file_path):
-    """Run dos2unix to convert CRLF to LF (if available)."""
+    """Convert CRLF to LF using dos2unix (if available)."""
     try:
         subprocess.run(["dos2unix", file_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
@@ -18,44 +19,49 @@ def should_ignore_file(file_path):
         'vendor/qcom/',
         'device/qcom/',
     ]
-    return any(file_path.startswith(p) for p in ignore_paths)
+    norm_path = os.path.normpath(file_path)
+    return any(norm_path.startswith(os.path.normpath(p)) for p in ignore_paths)
 
 def inject_debug_lines(file_path):
-    normalize_line_endings(file_path)
+    try:
+        normalize_line_endings(file_path)
 
-    with open(file_path, 'r') as f:
-        lines = f.readlines()
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+    except Exception as e:
+        print(f"[ERROR] Failed to read {file_path}: {e}")
+        return
 
     updated_lines = []
-    in_function = False
+    brace_depth = 0
+    inside_function = False
 
     for idx, line in enumerate(lines):
         stripped = line.strip()
 
-        # Skip blank or comment lines
+        # Skip comments or empty lines
         if not stripped or stripped.startswith("#"):
             updated_lines.append(line)
             continue
 
         # Detect function start (e.g. "function foo()" or "foo() {")
-        function_start = re.match(r'^\s*(function\s+\w+|\w+\s*\(\))\s*\{?', stripped)
-        if function_start:
-            in_function = True
+        if re.match(r'^\s*(function\s+\w+|\w+\s*\(\))\s*\{?', stripped):
+            inside_function = True
+            brace_depth = stripped.count('{') - stripped.count('}')
             updated_lines.append(line)
             continue
 
-        # Detect function end (heuristic: closing brace on its own line)
-        if in_function and stripped == "}":
-            in_function = False
-            updated_lines.append(line)
-            continue
+        if inside_function:
+            brace_depth += stripped.count('{') - stripped.count('}')
+            if brace_depth <= 0:
+                inside_function = False
+                updated_lines.append(line)
+                continue
 
-        # Only inject inside function blocks
-        if in_function:
-            # Add a debug echo for simple assignments
             match_assign = re.match(r'^\s*(\w+)=.*', line)
             if match_assign:
                 var_name = match_assign.group(1)
+                # Inject debug line
                 debug_line = f'echo "[DEBUG] {file_path}:{idx+1} → {var_name}=${{{var_name}}}"\n'
                 updated_lines.append(line)
                 updated_lines.append(debug_line)
@@ -63,10 +69,12 @@ def inject_debug_lines(file_path):
 
         updated_lines.append(line)
 
-    with open(file_path, 'w') as f:
-        f.writelines(updated_lines)
-
-    normalize_line_endings(file_path)
+    try:
+        with open(file_path, 'w') as f:
+            f.writelines(updated_lines)
+        normalize_line_endings(file_path)
+    except Exception as e:
+        print(f"[ERROR] Failed to write {file_path}: {e}")
 
 def walk_and_inject(root_dir):
     for root, _, files in os.walk(root_dir):
