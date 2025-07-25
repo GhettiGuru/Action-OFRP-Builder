@@ -112,17 +112,17 @@ jobs:
           cd sync
           ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
 
-      - name: Cache OrangeFox .repo after sync
+      - name: Save OrangeFox manifest cache (repo only)
         uses: actions/cache@v4
         with:
           path: |
-            workspace/fox_12.1/.repo
-            workspace/fox_12.1/default.xml
+            workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
           key: ofrp-repo-${{ github.sha }}
           restore-keys: |
             ofrp-repo-
 
       - name: Clone Device Tree
+        shell: bash
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
@@ -130,6 +130,7 @@ jobs:
 
       - name: Clone Common Tree (if defined)
         if: github.event.inputs.COMMON_TREE_URL != ''
+        shell: bash
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
@@ -142,8 +143,8 @@ jobs:
 
       - name: Build Recovery Image
         run: |
-          set -xeuo pipefail
-          cd workspace/fox_12.1
+          set -xeo pipefail
+          cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
           export ALLOW_MISSING_DEPENDENCIES=true
@@ -156,20 +157,24 @@ jobs:
       - name: Check output files
         run: |
           set -x
-          ls -al workspace/fox_12.1/out/target/product || true
-          ls -al workspace/fox_12.1/out/target/product/* || true
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product || true
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/* || true
 
       - name: Show build log (tail)
         run: |
           echo "::group::Last 100 lines of build.log"
-          tail -n 100 workspace/fox_12.1/build.log || true
+          if [[ -f workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log ]]; then
+            tail -n 100 workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+          else
+            echo "build.log not found!"
+          fi
           echo "::endgroup::"
 
       - name: Upload build log
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: workspace/fox_12.1/build.log
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
