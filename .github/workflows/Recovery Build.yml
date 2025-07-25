@@ -159,8 +159,11 @@ jobs:
           touch build.log
 
           set +u
-          source build/envsetup.sh
-          source vendor/twrp/build/envsetup.sh || true
+          # Redirect to avoid DEBUG pollution during sourcing
+          {
+            source build/envsetup.sh
+            source vendor/twrp/build/envsetup.sh || true
+          } 2>&1 | tee -a build.log
           set -u
 
           export ALLOW_MISSING_DEPENDENCIES=true
@@ -198,7 +201,7 @@ jobs:
             ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
           name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
           tag_name: ${{ github.run_id }}
-          body: |
+        body: |
             Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
             Device: ${{ github.event.inputs.DEVICE_NAME }}
         env:
