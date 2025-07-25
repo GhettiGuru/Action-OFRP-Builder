@@ -103,7 +103,7 @@ jobs:
       - name: Sync OrangeFox sources
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
-          if [ ! -d fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo ]; then
+          if [ ! -d fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifests ]; then
             git clone ${{ github.event.inputs.SYNC_URL }} sync
             cd sync
             ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} \
@@ -149,23 +149,20 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           touch build.log
           {
-            set +u  # prevent unbound variable errors for version, etc.
+            set +u
             source build/envsetup.sh
             source vendor/twrp/build/envsetup.sh || true
             set -u
-
             export ALLOW_MISSING_DEPENDENCIES=true
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
+            export TARGET_PLATFORM_VERSION=13.0
             touch frameworks/base/services/core/xsd/vts/Android.mk
-
             echo "Running lunch..."
             lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
-
             echo "TARGET_PRODUCT=$TARGET_PRODUCT"
             echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
             echo "TARGET_DEVICE=$TARGET_DEVICE"
-
             make -j$(nproc) recoveryimage
           } 2>&1 | tee build.log
         continue-on-error: true
@@ -206,3 +203,4 @@ jobs:
             Target: ${{ github.event.inputs.BUILD_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          
