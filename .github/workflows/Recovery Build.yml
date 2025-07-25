@@ -153,12 +153,13 @@ jobs:
           # The key fix is to put single quotes around 'EOF' to prevent shell variable expansion
           # and tell YAML to treat the following block as literal text.
           cat <<'EOF' > "$ANDROID_MK_PATH"
-LOCAL_PATH := $(call my-dir)
-include $(CLEAR_VARS)
-include $(BUILD_STATIC_LIBRARY)
+          LOCAL_PATH := $(call my-dir)  # <--- THIS LINE NEEDS TO BE INDENTED
+          include $(CLEAR_VARS)
+          include $(BUILD_STATIC_LIBRARY)
 EOF
           echo "Created dummy Android.mk at: $ANDROID_MK_PATH"
           ls -l "$ANDROID_MK_PATH"
+    
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
