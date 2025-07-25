@@ -73,7 +73,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           set -x
-          sudo apt update && sudo apt install -y \
+          sudo apt update && sudo apt full-upgrade -y && sudo apt -y install \
             bc bison build-essential ccache curl flex g++-multilib \
             gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
             lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
