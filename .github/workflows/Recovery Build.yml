@@ -32,7 +32,7 @@ on:
       DEVICE_NAME:
         description: 'DEVICE_NAME'
         required: true
-        default: 'twrp_nx729j'
+        default: 'nx729j'
       MAKEFILE_NAME:
         description: 'MAKEFILE_NAME'
         required: true
@@ -136,3 +136,48 @@ jobs:
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 12
+
+      - name: Build Recovery Image
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -x
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
+          make clean
+          mka ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all) | tee build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "Build exited with code $EXIT_CODE"
+          echo "======== LOG TAIL ==========="
+          tail -n 100 build.log
+          exit $EXIT_CODE
+
+      - name: List Output Files
+        shell: bash
+        run: |
+          set -x
+          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/
+          echo
+          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
+          name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
+          tag_name: ${{ github.run_id }}
+          body: |
+            Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
+            Device: ${{ github.event.inputs.DEVICE_NAME }}
+            Target: ${{ github.event.inputs.BUILD_TARGET }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
