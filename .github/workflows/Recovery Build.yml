@@ -104,15 +104,7 @@ jobs:
           distribution: temurin
           java-version: 11
 
-      - name: Sync OrangeFox sources
-        run: |
-          set -x
-          cd ${{ steps.pwd.outputs.workspace-folder }}
-          git clone ${{ github.event.inputs.SYNC_URL }}
-          cd sync
-          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-
-      - name: Save OrangeFox manifest cache (repo only)
+      - name: Restore OrangeFox manifest cache (repo only)
         uses: actions/cache@v4
         with:
           path: |
@@ -120,6 +112,27 @@ jobs:
           key: ofrp-repo-${{ github.sha }}
           restore-keys: |
             ofrp-repo-
+
+      - name: Sync OrangeFox sources
+        run: |
+          set -x
+          cd ${{ steps.pwd.outputs.workspace-folder }}
+
+          if [ ! -d fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo ]; then
+            echo "No existing .repo cache found. Syncing sources..."
+            git clone ${{ github.event.inputs.SYNC_URL }}
+            cd sync
+            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          else
+            echo "Existing .repo found. Skipping sync."
+          fi
+
+      - name: Save OrangeFox manifest cache (repo only)
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ github.sha }}
 
       - name: Clone Device Tree
         shell: bash
@@ -143,7 +156,7 @@ jobs:
 
       - name: Build Recovery Image
         run: |
-          set -xeo pipefail
+          set -xeuo pipefail
           cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
