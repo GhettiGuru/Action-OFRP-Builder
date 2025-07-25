@@ -162,16 +162,26 @@ jobs:
           {
             touch build.log
 
-            set +u # Temporarily disable unbound variable check
+            set +u
             source build/envsetup.sh
             
-            # The OrangeFox envsetup script has a bug where a bare test command
-            # fails with 'set -e'. We disable it temporarily to work around this.
+            # --- START NEW DEBUGGING ---
+            echo "=================================================="
+            echo "DEBUG: Checking for Android.mk before sourcing..."
+            ls -l frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: Android.mk NOT FOUND!"
+            echo " "
+            echo "DEBUG: Content of Android.mk:"
+            cat frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: CANNOT CAT Android.mk!"
+            echo " "
+            echo "DEBUG: End of check."
+            echo "=================================================="
+            # --- END NEW DEBUGGING ---
+
             set +e
             source vendor/twrp/build/envsetup.sh
             set -e
             
-            set -u # Re-enable unbound variable check
+            set -u
 
             export ALLOW_MISSING_DEPENDENCIES=true
             export OUT_DIR=$(pwd)/out
