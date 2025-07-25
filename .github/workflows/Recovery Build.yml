@@ -54,7 +54,7 @@ jobs:
 
       - name: Restore OrangeFox Source Cache
         id: orangefox-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             fox_${{ github.event.inputs.MANIFEST_BRANCH }}
@@ -62,7 +62,7 @@ jobs:
 
       - name: Restore Android SDK Cache
         id: android-sdk-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.android
@@ -71,6 +71,7 @@ jobs:
           key: android-sdk-${{ runner.os }}
 
       - name: Cleanup Preinstalled Tools to Free Space
+        shell: bash
         run: |
           sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
           sudo apt-get autoremove -y
@@ -81,13 +82,15 @@ jobs:
         uses: rokibhasansagar/slimhub_actions@main
 
       - name: Set Up Workspace Directory
+        id: pwd
+        shell: bash
         run: |
           mkdir workspace
           cd workspace
           echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
-        id: pwd
 
       - name: Prepare the Build Environment
+        shell: bash
         run: |
           sudo apt update
           sudo apt -y install \
@@ -112,20 +115,22 @@ jobs:
 
       - name: Sync OrangeFox sources and minimal manifest
         if: steps.orangefox-cache.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
           git clone ${{ github.event.inputs.SYNC_URL }}
           cd sync
           ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
       - name: Clone device tree
+        shell: bash
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
 
       - name: Clone common tree (if set)
         if: github.event.inputs.COMMON_TREE_URL != ''
+        shell: bash
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
@@ -139,19 +144,20 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-         cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-         source build/envsetup.sh
-         export ALLOW_MISSING_DEPENDENCIES=true
-         lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
-         make clean
-         mka ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all) | tee build.log
-         EXIT_CODE=${PIPESTATUS[0]}
-         echo "Build exited with code $EXIT_CODE"
-         echo "======== LOG TAIL ==========="
-         tail -n 100 build.log
-         exit $EXIT_CODE
-        
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
+          make clean
+          mka ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all) | tee build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "Build exited with code $EXIT_CODE"
+          echo "======== LOG TAIL ==========="
+          tail -n 100 build.log
+          exit $EXIT_CODE
+
       - name: Check Output Directory
+        shell: bash
         run: |
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/
           echo
