@@ -7,6 +7,12 @@ if not BUILD_TOP:
 
 debug_echo = 'echo "DEBUG-INJECT: ({file}) CWD: $(pwd)" >> /dev/stderr\n'
 
+files_to_patch = [
+    os.path.join(BUILD_TOP, "build/envsetup.sh"),
+    os.path.join(BUILD_TOP, "vendor/twrp/build/envsetup.sh"),
+]
+
+# cproj() function definition with safe backslashes for Python regex replacement
 replacement_cproj = r'''
 function cproj()
 {
@@ -16,73 +22,51 @@ function cproj()
     while [ \( ! \( -f "$TOPFILE" \) \) -a \( "$PWD" != "/" \) ]; do
         T=$PWD
         if [ -f "$T/Android.mk" ]; then
-            \cd "$T"
+            \\cd "$T"
             return
         fi
-        \cd ..
+        \\cd ..
     done
-    \cd "$HERE"
+    \\cd "$HERE"
     echo "DEBUG-INJECT: cproj() could not find Android.mk, returning to $HERE" >&2
 }
 '''.strip() + "\n"
 
-files_to_patch = [
-    os.path.join(BUILD_TOP, "build/envsetup.sh"),
-    os.path.join(BUILD_TOP, "vendor/twrp/build/envsetup.sh"),
-]
-
 for filepath in files_to_patch:
     if not os.path.exists(filepath):
-        print(f"[skip] {filepath} not found")
         continue
 
     print(f"[inject] Patching {filepath}")
+
     with open(filepath, "r") as f:
-        content = f.read()
+        lines = f.readlines()
 
-    relpath = os.path.relpath(filepath, BUILD_TOP)
-    echo_line = debug_echo.format(file=relpath)
+    modified = []
+    injected_debug = False
+    file_relpath = os.path.relpath(filepath, BUILD_TOP)
 
-    # Inject debug echo near the top (only once)
-    if echo_line not in content:
-        lines = content.splitlines()
-        for i, line in enumerate(lines):
-            if line.strip() and not line.strip().startswith("#"):
-                lines.insert(i, echo_line.strip())
-                break
-        content = "\n".join(lines)
+    for line in lines:
+        if not injected_debug:
+            modified.append(debug_echo.format(file=file_relpath))
+            injected_debug = True
 
-    # Replace or insert cproj()
-    cproj_re = r'function cproj\(\)\s*\{(?:[^{}]*|\{[^{}]*\})*\}'
+        modified.append(line)
+
+    content = "".join(modified)
+
+    # Replace original cproj() safely with version that logs debug if Android.mk is missing
     updated, count = re.subn(
-        cproj_re,
-        replacement_cproj.strip(),
+        r"function cproj\(\)\s*\{.*?\n\}",
+        replacement_cproj,
         content,
         flags=re.DOTALL,
     )
-    if count == 0:
-        print(f"[append] No cproj() found in {filepath}, appending at end")
-        if not content.endswith('\n'):
-            content += '\n'
-        content += '\n' + replacement_cproj
-    else:
-        content = updated
 
-    # Inject missing Android.mk checks with warning
-    mk_check_pattern = re.compile(r'(\[ -s\s+"?\$?\{?[^ \n]*Android\.mk"?\}? \])')
-    if 'DEBUG-INJECT: Android.mk warning' not in content:
-        def wrap_mk_check(match):
-            original = match.group(1)
-            return (
-                f'if ! {original}; then\n'
-                f'  echo "DEBUG-INJECT: Android.mk check failed in {relpath}: {original}" >&2\n'
-                f'else\n'
-                f'  {original}\n'
-                f'fi'
-            )
-        content = mk_check_pattern.sub(wrap_mk_check, content)
+    if count > 0:
+        print(f"[inject] Replaced cproj() in {file_relpath}")
 
+    # Write updated file
     with open(filepath, "w") as f:
-        f.write(content)
+        f.write(updated)
 
-    print(f"[done] Injected into {filepath}")
+    print(f"[inject] Injection complete: {file_relpath}")
