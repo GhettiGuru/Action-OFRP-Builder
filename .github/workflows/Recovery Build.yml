@@ -100,11 +100,6 @@ jobs:
          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}
       
-      # This optional step helps verify that the device tree is cloned properly
-      - name: Debug:List device tree
-        run: |
-          ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
-
       - name: Patch envsetup.sh for unbound variables
         run: |
           sed -i 's/\bversion\b/${version:-unknown}/g' \
@@ -152,7 +147,12 @@ jobs:
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 12
-
+          
+# This optional step helps verify that the device tree is cloned properly
+      - name: Debug:List device tree
+        run: |
+          ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
+          
       - name: Build Recovery Image
         run: |
           set -xeuo pipefail
