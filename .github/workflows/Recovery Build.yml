@@ -126,7 +126,8 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
-      # NEW STEP: Pre-create required Android.mk file
+    
+# NEW STEP: Pre-create required Android.mk file
       - name: Create Dummy Android.mk
         run: |
           set -xeuo pipefail
@@ -136,19 +137,19 @@ jobs:
           # The key fix is to put single quotes around 'EOF' to prevent shell variable expansion
           # and tell YAML to treat the following block as literal text.
           cat <<'EOF' > "$ANDROID_MK_PATH"
-LOCAL_PATH := $(call my-dir) # <--- IMPORTANT: These lines MUST have NO leading spaces.
-include $(CLEAR_VARS)
-include $(BUILD_STATIC_LIBRARY)
-EOF
+          LOCAL_PATH := $(call my-dir)
+          include $(CLEAR_VARS)
+          include $(BUILD_STATIC_LIBRARY)
+          EOF
           echo "Created dummy Android.mk at: $ANDROID_MK_PATH"
           ls -l "$ANDROID_MK_PATH"
-    
+
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 12
           
-      - name: Debug: List device tree and current working directory
+      - name: Debug:List device tree and current working directory
         run: |
           echo "Current working directory: $(pwd)"
           ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
