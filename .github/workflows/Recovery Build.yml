@@ -1,3 +1,4 @@
+ secrets.GH_TOKEN }}
 name: Recovery Build
 
 on:
@@ -126,7 +127,6 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
-    
       - name: Inject Debugging into envsetup.sh
         run: |
           set -x
@@ -134,6 +134,7 @@ jobs:
 
           # Inject into build/envsetup.sh
           # This inserts debug commands right before the Android.mk check.
+          # The entire sed script is now single-quoted for YAML parsing.
           sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
           '"'echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >> /dev/stderr
 echo "DEBUG-INJECT: (build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr
@@ -143,22 +144,19 @@ echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \$( [ -s "\$T/framew
           ' "${BUILD_TOP_PATH}/build/envsetup.sh"
 
           # Inject into vendor/twrp/build/envsetup.sh (if it exists and is sourced)
-          # ... (apply the same fix here for the second sed command)
-
-          # Inject into vendor/twrp/build/envsetup.sh (if it exists and is sourced)
           # We are targeting the same check, which might be within orangefox_envsetup or similar.
           # This sed command might need to be adapted based on the exact line in your vendorsetup.sh
           # that calls orangefox_envsetup or performs the check.
           # For robustness, we're using a common pattern.
+          # The entire sed script is now single-quoted for YAML parsing.
           sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >> /dev/stderr \
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr \
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr \
-ls -l "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr \
+          '"'echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >> /dev/stderr
+echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr
+echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr
+ls -l "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr
 echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \$( [ -s "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" ] && echo "TRUE" || echo "FALSE" )" >> /dev/stderr
           ' "${BUILD_TOP_PATH}/vendor/twrp/build/envsetup.sh" || true # || true to prevent failure if file doesn't exist or line is not found
 
-      
       - name: Build Recovery Image
         run: |
           set -xeuo pipefail
@@ -233,7 +231,7 @@ echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \$( [ -s
             ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
             ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
           name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
-          tag_name: ${{ github.run_id }}
+          tag_name: ${{ github.run_id }} # Corrected indentation here
           body: |
             Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
             Device: ${{ github.event.inputs.DEVICE_NAME }}
