@@ -1,55 +1,41 @@
-#!/usr/bin/env python3
-
 import os
-import sys
+import re
 
-# Define the debug lines to inject
-debug_lines = [
-    'echo "DEBUG-INJECT: ({file}) Checking Android.mk:" >> /dev/stderr',
-    'echo "DEBUG-INJECT: ({file}) CWD: $(pwd)" >> /dev/stderr',
-    'echo "DEBUG-INJECT: ({file}) Path being checked: {path}" >> /dev/stderr',
-    'ls -l "{path}" >> /dev/stderr || echo "DEBUG-INJECT: ({file}) Android.mk not found or empty here!" >> /dev/stderr',
-    'echo "DEBUG-INJECT: ({file}) Result of -s check: $( [ -s \\"{path}\\" ] && echo TRUE || echo FALSE )" >> /dev/stderr',
+BUILD_TOP = os.environ.get("BUILD_TOP_PATH")
+if not BUILD_TOP:
+    raise RuntimeError("BUILD_TOP_PATH environment variable not set")
+
+debug_echo = 'echo "DEBUG-INJECT: ({file}) CWD: $(pwd)" >> /dev/stderr\n'
+
+files_to_patch = [
+    os.path.join(BUILD_TOP, "build/envsetup.sh"),
+    os.path.join(BUILD_TOP, "vendor/twrp/build/envsetup.sh"),
 ]
 
-# File paths to patch
-targets = [
-    {
-        "path": "build/envsetup.sh",
-        "search": '[ -s "$T/frameworks/base/services/core/xsd/vts/Android.mk" ]',
-        "debug_path": "$T/frameworks/base/services/core/xsd/vts/Android.mk",
-        "file_label": "build/envsetup.sh",
-    },
-    {
-        "path": "vendor/twrp/build/envsetup.sh",
-        "search": '[ -s "$TOP/frameworks/base/services/core/xsd/vts/Android.mk" ]',
-        "debug_path": "$TOP/frameworks/base/services/core/xsd/vts/Android.mk",
-        "file_label": "vendor/twrp/build/envsetup.sh",
-    },
-]
+for filepath in files_to_patch:
+    if not os.path.exists(filepath):
+        continue
 
-def inject_debug(file_path, match_line, debug_text):
-    if not os.path.isfile(file_path):
-        print(f"Skipping missing file: {file_path}")
-        return
-
-    with open(file_path, 'r') as f:
+    with open(filepath, "r") as f:
         lines = f.readlines()
 
-    with open(file_path, 'w') as f:
-        for line in lines:
-            if match_line in line:
-                for debug_line in debug_text:
-                    f.write(debug_line + '\n')
-            f.write(line)
+    modified = []
+    injected = False
+    for line in lines:
+        # Inject debug echo once at the start
+        if not injected:
+            modified.append(debug_echo.format(file=os.path.relpath(filepath, BUILD_TOP)))
+            injected = True
 
-def main():
-    root_dir = os.environ.get("BUILD_TOP_PATH", ".")
-    for target in targets:
-        file_path = os.path.join(root_dir, target["path"])
-        debug_text = [line.format(file=target["file_label"], path=target["debug_path"]) for line in debug_lines]
-        inject_debug(file_path, target["search"], debug_text)
-        print(f"Injected debug lines into {file_path}")
+        # Check for Android.mk presence checks
+        mk_match = re.search(r"\[ -s ([^\]]*Android\.mk) \]", line)
+        if mk_match:
+            mk_path = mk_match.group(1)
+            modified.append(f'if [ ! -s {mk_path} ]; then echo "WARNING: Missing or empty {mk_path} ignored"; fi\n')
 
-if __name__ == "__main__":
-    main()
+        modified.append(line)
+
+    with open(filepath, "w") as f:
+        f.writelines(modified)
+
+    print(f"Injected debug and ignore lines into {filepath}")
