@@ -52,15 +52,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Restore Android SDK Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android
-            ~/android-sdk
-            /usr/local/lib/android
-          key: android-sdk-${{ runner.os }}
-
       - name: Clean Preinstalled Tools
         run: |
           sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
@@ -89,12 +80,12 @@ jobs:
           mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
           echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
 
-      - name: Restore OrangeFox manifest cache (repo only)
+      - name: Restore OrangeFox .repo Cache
+        id: cache-ofrp
         uses: actions/cache@v4
         with:
-          path: |
-            workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ github.sha }}
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
           restore-keys: |
             ofrp-repo-
 
@@ -115,25 +106,28 @@ jobs:
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
 
-      - name: Shallow Sync OrangeFox sources
+      - name: Conditionally Sync OrangeFox sources
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
-          git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
-          cd sync
-          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          if [[ "${{ steps.cache-ofrp.outputs.cache-hit }}" == "true" ]]; then
+            echo "🟢 .repo cache found - using shallow sync"
+            git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
+            cd sync
+            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          else
+            echo "🔴 .repo cache NOT found - performing full repo init/sync"
+            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
+            repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
+          fi
 
-      - name: Patch envsetup.sh for unbound variables
+      - name: Patch envsetup.sh
         run: |
           sed -i 's/\bversion\b/${version:-unknown}/g' \
-            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build/envsetup.sh
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build/envsetup.sh || true
           sed -i 's/\bBUILD_VAR_CACHE_READY\b/${BUILD_VAR_CACHE_READY:-false}/g' \
-            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build/envsetup.sh
-
-      - name: Save OrangeFox .repo Cache
-        uses: actions/cache@v4
-        with:
-          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build/envsetup.sh || true
 
       - name: Clone Device Tree
         run: |
@@ -158,20 +152,17 @@ jobs:
 
           echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> "${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk"
           touch build.log
-          echo "DEBUG: Current directory: $(pwd)"
-          
+
           set +u
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
           set -u
-          
+
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
-          
-          echo "Running lunch..."
-          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
 
+          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}
           make -j$(nproc) recoveryimage
         continue-on-error: true
 
@@ -181,16 +172,12 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ github.event.inputs.DEVICE_NAME }}-${{ github.sha }}
 
-      - name: Check output files
-        run: |
-          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product || true
-          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/* || true
-
-      - name: Show build log (tail)
-        run: |
-          echo "::group::Last 100 lines of build.log"
-          tail -n 100 workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log || echo "No build log found."
-          echo "::endgroup::"
+      - name: Save OrangeFox .repo Cache (after full sync)
+        if: steps.cache-ofrp.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
 
       - name: Upload build log
         uses: actions/upload-artifact@v4
