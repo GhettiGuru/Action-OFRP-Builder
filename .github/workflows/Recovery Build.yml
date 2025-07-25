@@ -156,7 +156,7 @@ jobs:
             export ALLOW_MISSING_DEPENDENCIES=true
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
-            export TARGET_PLATFORM_VERSION=13.0
+            export TARGET_PLATFORM_VERSION=13
             touch frameworks/base/services/core/xsd/vts/Android.mk
             echo "Running lunch..."
             lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
