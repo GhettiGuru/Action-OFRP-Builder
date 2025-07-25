@@ -165,7 +165,7 @@ jobs:
             set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
             source build/envsetup.sh
             # Allow vendor/twrp/build/envsetup.sh to fail without stopping the whole script
-            source vendor/twrp/build/envsetup.sh || true
+            source vendor/twrp/build/envsetup.sh
             set -u # Re-enable unbound variable check
 
             export ALLOW_MISSING_DEPENDENCIES=true
