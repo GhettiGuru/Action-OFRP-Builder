@@ -3,44 +3,51 @@ import re
 
 BUILD_TOP = os.environ.get("BUILD_TOP_PATH")
 if not BUILD_TOP:
-    raise RuntimeError("BUILD_TOP_PATH environment variable not set")
-
-debug_echo = 'echo "DEBUG-INJECT: ({file}) CWD: $(pwd)" >&2\n'
+    raise RuntimeError("BUILD_TOP_PATH not set")
 
 files_to_patch = [
     os.path.join(BUILD_TOP, "build/envsetup.sh"),
     os.path.join(BUILD_TOP, "vendor/twrp/build/envsetup.sh"),
 ]
 
+replacement_cproj = """function cproj()
+{
+    local TOPFILE=build/make/core/envsetup.mk
+    local HERE=$PWD
+    local T=
+    while [ ! -f "$TOPFILE" ] && [ "$PWD" != "/" ]; do
+        T=$PWD
+        if [ -f "$T/Android.mk" ]; then
+            cd "$T"
+            return
+        fi
+        cd ..
+    done
+    cd "$HERE"
+    echo "DEBUG-INJECT: cproj() could not find Android.mk, returning to $HERE" >&2
+}
+"""
+
 for filepath in files_to_patch:
-    if not os.path.exists(filepath):
+    if not os.path.isfile(filepath):
         continue
 
     with open(filepath, "r") as f:
-        lines = f.readlines()
+        content = f.read()
 
-    modified = []
-    injected_debug = False
+    # Replace existing cproj() function
+    updated, count = re.subn(
+        r'function cproj\(\)\s*\{.*?\n\}',  # match the whole function (non-greedy)
+        replacement_cproj,
+        content,
+        flags=re.DOTALL,
+    )
 
-    for line in lines:
-        # Inject debug print at the top
-        if not injected_debug:
-            modified.append(debug_echo.format(file=os.path.relpath(filepath, BUILD_TOP)))
-            injected_debug = True
-
-        # Match `[ -s "some/path/Android.mk" ]`
-        mk_check = re.search(r'\[ -s\s+"?([^"\]]*Android\.mk)"?\s*\]', line)
-        if mk_check:
-            mk_path = mk_check.group(1)
-            modified.append(f'if [ ! -s "{mk_path}" ]; then\n')
-            modified.append(f'  echo "WARNING: Missing or empty {mk_path} ignored" >&2\n')
-            modified.append('else\n')
-            modified.append(f'  {line.strip()}\n')
-            modified.append('fi\n')
-        else:
-            modified.append(line)
+    if count == 0:
+        print(f"No cproj() found in {filepath} — skipping")
+        continue
 
     with open(filepath, "w") as f:
-        f.writelines(modified)
+        f.write(updated)
 
-    print(f"✅ Patched: {filepath}")
+    print(f"✅ Replaced cproj() in {filepath}")
