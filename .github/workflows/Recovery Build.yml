@@ -83,7 +83,7 @@ jobs:
       - name: Prepare Build Environment
         run: |
           set -x
-          sudo apt update
+          sudo apt update -y && sudo apt full-upgrade -y 
           sudo apt -y install \
             bc bison build-essential ccache curl flex g++-multilib \
             gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
