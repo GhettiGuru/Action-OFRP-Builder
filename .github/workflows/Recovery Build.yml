@@ -112,6 +112,15 @@ jobs:
           cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           repo sync -c -j$(nproc) --no-tags --no-clone-bundle
 
+      - name: Debug: List device tree
+        run: |
+          ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
+
+# ⚠️ Make sure you have a .repo/local_manifests/*.xml file that includes:
+# <manifest>
+#   <project path="device/nubia/nx729j" name="YourGitHub/device_nubia_nx729j" remote="github" revision="main" />
+# </manifest>
+
       - name: Patch envsetup.sh for unbound variables
         run: |
           sed -i 's/\bversion\b/${version:-unknown}/g' \
@@ -156,7 +165,6 @@ jobs:
             export ALLOW_MISSING_DEPENDENCIES=true
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
-            export TARGET_PLATFORM_VERSION=13
             touch frameworks/base/services/core/xsd/vts/Android.mk
             echo "Running lunch..."
             lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
