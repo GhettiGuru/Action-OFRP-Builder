@@ -135,7 +135,6 @@ jobs:
           key: ofrp-repo-${{ github.sha }}
 
       - name: Clone Device Tree
-        shell: bash
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
@@ -143,7 +142,6 @@ jobs:
 
       - name: Clone Common Tree (if defined)
         if: github.event.inputs.COMMON_TREE_URL != ''
-        shell: bash
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
@@ -158,14 +156,19 @@ jobs:
         run: |
           set -xeo pipefail
           cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          source build/envsetup.sh
-          source vendor/twrp/build/envsetup.sh || true
-          export ALLOW_MISSING_DEPENDENCIES=true
-          export OUT_DIR=$(pwd)/out
-          export OUT=$OUT_DIR
-          [[ -s frameworks/base/services/core/xsd/vts/Android.mk ]] || true
-          lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
-          make -j$(nproc) recoveryimage 2>&1 | tee build.log
+          touch build.log  # Ensure the file exists
+          {
+            set +u
+            source build/envsetup.sh
+            source vendor/twrp/build/envsetup.sh || true
+            set -u
+            export ALLOW_MISSING_DEPENDENCIES=true
+            export OUT_DIR=$(pwd)/out
+            export OUT=$OUT_DIR
+            [[ -s frameworks/base/services/core/xsd/vts/Android.mk ]] || true
+            lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
+            make -j$(nproc) recoveryimage
+          } 2>&1 | tee build.log
         continue-on-error: true
 
       - name: Check output files
