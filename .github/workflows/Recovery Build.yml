@@ -90,6 +90,98 @@ jobs:
         run: |
           mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
           echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
+name: Recovery Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      SYNC_URL:
+        description: 'SYNC_URL'
+        required: true
+        default: 'https://gitlab.com/OrangeFox/sync.git'
+      MANIFEST_BRANCH:
+        description: 'MANIFEST_BRANCH'
+        required: true
+        default: '12.1'
+      DEVICE_TREE_URL:
+        description: 'DEVICE_TREE_URL'
+        required: true
+        default: 'https://github.com/GhettiGuru/Redmagic-8-tree'
+      DEVICE_TREE_BRANCH:
+        description: 'DEVICE_TREE_BRANCH'
+        required: true
+        default: 'android_12.1'
+      DEVICE_PATH:
+        description: 'DEVICE_PATH'
+        required: true
+        default: 'device/nubia/nx729j'
+      COMMON_TREE_URL:
+        description: 'COMMON_TREE_URL (optional)'
+        required: false
+      COMMON_PATH:
+        description: 'COMMON_PATH (optional)'
+        required: false
+      DEVICE_NAME:
+        description: 'DEVICE_NAME'
+        required: true
+        default: 'twrp_nx729j'
+      MAKEFILE_NAME:
+        description: 'MAKEFILE_NAME'
+        required: true
+        default: 'twrp_nx729j'
+      BUILD_VARIANT:
+        description: 'Build variant (eng or userdebug)'
+        required: true
+        default: 'eng'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Restore Android SDK Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android
+            ~/android-sdk
+            /usr/local/lib/android
+          key: android-sdk-${{ runner.os }}
+
+      - name: Clean Preinstalled Tools
+        run: |
+          set -x
+          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
+
+      - name: Install Build Dependencies
+        run: |
+          set -x
+          sudo apt update && sudo apt full-upgrade -y && sudo apt -y install \
+            bc bison build-essential ccache curl flex g++-multilib \
+            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
+            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+            libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk aria2 repo gh git
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Set Up Workspace
+        id: pwd
+        run: |
+          mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+          echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
 
 
       - name: Sync OrangeFox sources and minimal manifest
@@ -130,31 +222,111 @@ jobs:
         run: |
           set -x
           BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
+          
+          # Python script to inject debug lines into envsetup.sh files.
+          # This approach pipes a multi-line Python script (defined with a here-document)
+          # directly to python3, avoiding complex shell escaping within YAML.
+          #
+          # IMPORTANT: The 'EOF_PYTHON' delimiter below and its closing counterpart at the end
+          # MUST be at the SAME INDENTATION LEVEL as the 'python3 - <<'EOF_PYTHON'' line itself.
+          # No extra spaces before or after the closing 'EOF_PYTHON'.
+          python3 - <<'EOF_PYTHON'
+import sys
+import os
 
-          # Inject into build/envsetup.sh
-          # This inserts debug commands right before the Android.mk check.
-          # The entire sed script is now single-quoted for YAML parsing.
-          sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
-          '"'echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >> /dev/stderr
-echo "DEBUG-INJECT: (build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr
-echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr
-ls -l "\$T/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr
-echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \$( [ -s "\$T/frameworks/base/services/core/xsd/vts/Android.mk" ] && echo "TRUE" || echo "FALSE" )" >> /dev/stderr
-          ' "${BUILD_TOP_PATH}/build/envsetup.sh"
+def insert_lines_before_pattern(filepath, pattern, lines_to_insert, optional=False):
+    """
+    Reads a file, finds a specific pattern, and inserts lines before it.
+    If optional is True, it won't raise an error if the file or pattern is not found.
+    """
+    try:
+        if not os.path.exists(filepath):
+            if optional:
+                print(f"Warning: Optional file not found at {filepath}. Skipping injection.", file=sys.stderr)
+                return
+            else:
+                raise FileNotFoundError(f"File not found at {filepath}")
 
-          # Inject into vendor/twrp/build/envsetup.sh (if it exists and is sourced)
-          # We are targeting the same check, which might be within orangefox_envsetup or similar.
-          # This sed command might need to be adapted based on the exact line in your vendorsetup.sh
-          # that calls orangefox_envsetup or performs the check.
-          # For robustness, we're using a common pattern.
-          # The entire sed script is now single-quoted for YAML parsing.
-          sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
-          '"'echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >> /dev/stderr
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr
-ls -l "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \$( [ -s "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" ] && echo "TRUE" || echo "FALSE" )" >> /dev/stderr
-          ' "${BUILD_TOP_PATH}/vendor/twrp/build/envsetup.sh" || true # || true to prevent failure if file doesn't exist or line is not found
+        with open(filepath, 'r') as f:
+            content = f.readlines()
+
+        new_content = []
+        inserted = False
+        for line in content:
+            # Check for the pattern. Using 'in' for simple substring match.
+            # For more complex regex, import 're' and use re.search(pattern, line).
+            if pattern in line and not inserted:
+                # Insert lines before the pattern
+                for insert_line in lines_to_insert:
+                    # Ensure each inserted line ends with a newline character
+                    new_content.append(insert_line.rstrip('\n') + '\n')
+                inserted = True
+            new_content.append(line)
+
+        if not inserted:
+            if optional:
+                print(f"Warning: Pattern '{pattern}' not found in optional file '{filepath}'. Lines not inserted.", file=sys.stderr)
+            else:
+                print(f"Error: Pattern '{pattern}' not found in '{filepath}'. Lines not inserted.", file=sys.stderr)
+                sys.exit(1) # Exit with error if pattern is mandatory and not found
+
+        with open(filepath, 'w') as f:
+            f.writelines(new_content)
+        print(f"Successfully injected lines into {filepath}")
+
+    except FileNotFoundError as e:
+        # FIX: Correct indentation here
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1) # Exit with error if a mandatory file is not found
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        sys.exit(1) # Exit with error for other exceptions
+
+# Define the lines to insert for build/envsetup.sh
+# Escaping for shell variables ($T, $(pwd)) is done here, as these strings
+# will be written to the envsetup.sh file and then interpreted by the shell.
+# Python string literals for these lines. Need to escape internal double quotes.
+# And ensure \$ becomes \\$ for Python's string literal, so it remains \$ in the output file.
+lines_to_insert_build = [
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) CWD: \\$(pwd)\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Path being checked: \\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr',
+    'ls -l \"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr || echo \"DEBUG-INJECT: (build/envsetup.sh) Android.mk not found or empty here!\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \\$( [ -s \"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo \"TRUE\" || echo \"FALSE\" )\" >> /dev/stderr'
+]
+
+# Define the lines to insert for vendor/twrp/build/envsetup.sh
+lines_to_insert_vendor = [
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \\$(pwd)\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr',
+    'ls -l \"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr || echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \\$( [ -s \"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo \"TRUE\" || echo \"FALSE\" )\" >> /dev/stderr'
+]
+
+# Get BUILD_TOP_PATH from environment variable set by the shell
+build_top_path = os.environ.get('BUILD_TOP_PATH')
+if not build_top_path:
+    print("Error: BUILD_TOP_PATH environment variable not set.", file=sys.stderr)
+    sys.exit(1)
+
+# Call the function for build/envsetup.sh
+# The pattern for Python needs internal quotes escaped: \"
+insert_lines_before_pattern(
+    os.path.join(build_top_path, 'build', 'envsetup.sh'),
+    '[ -s \\\"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\\\" ]',
+    lines_to_insert_build
+)
+
+# Call the function for vendor/twrp/build/envsetup.sh
+# This one is optional, so we pass optional=True
+insert_lines_before_pattern(
+    os.path.join(build_top_path, 'vendor', 'twrp', 'build', 'envsetup.sh'),
+    '[ -s \\\"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\\\" ]',
+    lines_to_insert_vendor,
+    optional=True
+)
+EOF_PYTHON
 
       - name: Build Recovery Image
         run: |
@@ -230,7 +402,373 @@ echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \$( [ -s
             ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
             ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
           name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
-          tag_name: ${{ github.run_id }} # Corrected indentation here
+          tag_name: ${{ github.run_id }}
+          body: |
+            Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
+            Device: ${{ github.event.inputs.DEVICE_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Sync OrangeFox sources and minimal manifest
+        run: |
+         cd ${{ steps.pwd.outputs.workspace-folder }}
+         git clone ${{ github.event.inputs.SYNC_URL }} sync # Cloned into 'sync' directory
+         cd sync
+         ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+      
+      - name: Patch envsetup.sh for unbound variables
+        run: |
+TH }}/BoardConfig.mk
+
+          # Now, start the subshell to capture all build output
+          {
+            touch build.log
+            set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
+            
+            # --- START DEBUGGING (within main build step, before sourcing) ---
+            echo "=================================================="
+            echo "DEBUG: Checking for Android.mk before sourcing (main build step):"
+            ls -l frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: Android.mk NOT FOUND in main step!"
+            echo "Content of Android.mk:"
+            cat frameworks/base/services/core/xsd/vts/Android.mk || echo "CANNOT CAT Android.mk in main step!"
+            echo "Current working directory (main build step): $(pwd)"
+            echo "=================================================="
+            # --- END DEBUGGING ---
+
+            source build/envsetup.sh
+            set +e # Temporarily disable exit on error for vendorsetup.sh
+            source vendor/twrp/build/envsetup.sh || true # Use || true to prevent job failure if this file isn't always present or errors
+            set -e # Re-enable exit on error
+
+            set -u # Re-enable unbound variable check
+
+            export ALLOW_MISSING_DEPENDENCIES=true
+            export OUT_DIR=$(pwd)/out
+            export OUT=$OUT_DIR
+
+            echo "Running lunch..."
+            lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
+            
+            echo "TARGET_PRODUCT=$TARGET_PRODUCT"
+            echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
+            echo "TARGET_DEVICE=$TARGET_DEVICE"
+            
+            make -j$(nproc) recoveryimage
+          } 2>&1 | tee build.log
+        continue-on-error: true
+        
+      - name: Check output files
+        run: |
+          set -x
+          # Using || true so the step doesn't fail if the directory is empty or doesn't exist
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product || true
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/* || true
+
+      - name: Show build log (tail)
+        run: |
+          echo "::group::Last 100 lines of build.log"
+          if [[ -f workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log ]]; then
+            tail -n 100 workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+          else
+            echo "build.log not found!"
+          fi
+          echo "::endgroup::"
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+
+      - name: Upload Build Output
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
+          name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
+          tag_name: ${{ github.run_id }}
+          body: |
+            Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
+            Device: ${{ github.event.inputs.DEVICE_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}cept Exception as e:
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        sys.exit(1) # Exit with error for other exceptions
+
+# Define the lines to insert for build/envsetup.sh
+# Escaping for shell variables ($T, $(pwd)) is done here, as these strings
+# will be written to the envsetup.sh file and then interpreted by the shell.
+# Python string literals for these lines. Need to escape internal double quotes.
+# And ensure \$ becomes \\$ for Python's string literal, so it remains \$ in the output file.
+lines_to_insert_build = [
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) CWD: \\$(pwd)\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Path being checked: \\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr',
+    'ls -l \"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr || echo \"DEBUG-INJECT: (build/envsetup.sh) Android.mk not found or empty here!\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \\$( [ -s \"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo \"TRUE\" || echo \"FALSE\" )\" >> /dev/stderr'
+]
+
+# Define the lines to insert for vendor/twrp/build/envsetup.sh
+lines_to_insert_vendor = [
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \\$(pwd)\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr',
+    'ls -l \"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr || echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \\$( [ -s \"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo \"TRUE\" || echo \"FALSE\" )\" >> /dev/stderr'
+]
+
+# Get BUILD_TOP_PATH from environment variable set by the shell
+build_top_path = os.environ.get('BUILD_TOP_PATH')
+if not build_top_path:
+    print("Error: BUILD_TOP_PATH environment variable not set.", file=sys.stderr)
+    sys.exit(1)
+
+# Call the function for build/envsetup.sh
+# The pattern for Python needs internal quotes escaped: \"
+insert_lines_before_pattern(
+    os.path.join(build_top_path, 'build', 'envsetup.sh'),
+    '[ -s \\\"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\\\" ]',
+    lines_to_insert_build
+)
+
+# Call the function for vendor/twrp/build/envsetup.sh
+# This one is optional, so we pass optional=True
+insert_lines_before_pattern(
+    os.path.join(build_top_path, 'vendor', 'twrp', 'build', 'envsetup.sh'),
+    '[ -s \\\"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\\\" ]',
+    lines_to_insert_vendor,
+    optional=True
+)
+EOF_PYTHON
+
+      - name: Build Recovery Image
+        run: |
+          set -xeuo pipefail
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          # Inject TARGET_PLATFORM_VERSION=SP2A.220305.012 into device's BoardConfig.mk (creates if missing)
+          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
+
+          # Now, start the subshell to capture all build output
+          {
+            touch build.log
+            set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
+            
+            # --- START DEBUGGING (within main build step, before sourcing) ---
+            echo "=================================================="
+            echo "DEBUG: Checking for Android.mk before sourcing (main build step):"
+            ls -l frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: Android.mk NOT FOUND in main step!"
+            echo "Content of Android.mk:"
+            cat frameworks/base/services/core/xsd/vts/Android.mk || echo "CANNOT CAT Android.mk in main step!"
+            echo "Current working directory (main build step): $(pwd)"
+            echo "=================================================="
+            # --- END DEBUGGING ---
+
+            source build/envsetup.sh
+            set +e # Temporarily disable exit on error for vendorsetup.sh
+            source vendor/twrp/build/envsetup.sh || true # Use || true to prevent job failure if this file isn't always present or errors
+            set -e # Re-enable exit on error
+
+            set -u # Re-enable unbound variable check
+
+            export ALLOW_MISSING_DEPENDENCIES=true
+            export OUT_DIR=$(pwd)/out
+            export OUT=$OUT_DIR
+
+            echo "Running lunch..."
+            lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
+            
+            echo "TARGET_PRODUCT=$TARGET_PRODUCT"
+            echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
+            echo "TARGET_DEVICE=$TARGET_DEVICE"
+            
+            make -j$(nproc) recoveryimage
+          } 2>&1 | tee build.log
+        continue-on-error: true
+        
+      - name: Check output files
+        run: |
+          set -x
+          # Using || true so the step doesn't fail if the directory is empty or doesn't exist
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product || true
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/* || true
+
+      - name: Show build log (tail)
+        run: |
+          echo "::group::Last 100 lines of build.log"
+          if [[ -f workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log ]]; then
+            tail -n 100 workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+          else
+            echo "build.log not found!"
+          fi
+          echo "::endgroup::"
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+
+      - name: Upload Build Output
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
+          name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
+          tag_name: ${{ github.run_id }}
+          body: |
+            Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
+            Device: ${{ github.event.inputs.DEVICE_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}    inserted = False
+        for line in content:
+            # Check for the pattern. Using 'in' for simple substring match.
+            # For more complex regex, import 're' and use re.search(pattern, line).
+            if pattern in line and not inserted:
+                # Insert lines before the pattern
+                for insert_line in lines_to_insert:
+                    # Ensure each inserted line ends with a newline character
+                    new_content.append(insert_line.rstrip('\\n') + '\\n')
+                inserted = True
+            new_content.append(line)
+
+        if not inserted:
+            if optional:
+                print(f\"Warning: Pattern '{pattern}' not found in optional file '{filepath}'. Lines not inserted.\", file=sys.stderr)
+            else:
+                print(f\"Error: Pattern '{pattern}' not found in '{filepath}'. Lines not inserted.\", file=sys.stderr)
+                sys.exit(1) # Exit with error if pattern is mandatory and not found
+
+        with open(filepath, 'w') as f:
+            f.writelines(new_content)
+        print(f\"Successfully injected lines into {filepath}\")
+
+    except FileNotFoundError as e:
+        print(f\"Error: {e}\", file=sys.stderr)
+        sys.exit(1) # Exit with error if a mandatory file is not found
+    except Exception as e:
+        print(f\"An unexpected error occurred: {e}\", file=sys.stderr)
+        sys.exit(1) # Exit with error for other exceptions
+
+# Define the lines to insert for build/envsetup.sh
+# Escaping for shell variables ($T, $(pwd)) is done here, as these strings
+# will be written to the envsetup.sh file and then interpreted by the shell.
+lines_to_insert_build = [
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) CWD: \\$(pwd)\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Path being checked: \\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr',
+    'ls -l \"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr || echo \"DEBUG-INJECT: (build/envsetup.sh) Android.mk not found or empty here!\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \\$( [ -s \"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo \"TRUE\" || echo \"FALSE\" )\" >> /dev/stderr'
+]
+
+# Define the lines to insert for vendor/twrp/build/envsetup.sh
+lines_to_insert_vendor = [
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \\$(pwd)\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr',
+    'ls -l \"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr || echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!\" >> /dev/stderr',
+    'echo \"DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \\$( [ -s \"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo \"TRUE\" || echo \"FALSE\" )\" >> /dev/stderr'
+]
+
+# Get BUILD_TOP_PATH from environment variable set by the shell
+build_top_path = os.environ.get('BUILD_TOP_PATH')
+if not build_top_path:
+    print(\"Error: BUILD_TOP_PATH environment variable not set.\", file=sys.stderr)
+    sys.exit(1)
+
+# Call the function for build/envsetup.sh
+insert_lines_before_pattern(
+    os.path.join(build_top_path, 'build', 'envsetup.sh'),
+    '[ -s \"\\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ]',
+    lines_to_insert_build
+)
+
+# Call the function for vendor/twrp/build/envsetup.sh
+# This one is optional, so we pass optional=True
+insert_lines_before_pattern(
+    os.path.join(build_top_path, 'vendor', 'twrp', 'build', 'envsetup.sh'),
+    '[ -s \"\\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ]',
+    lines_to_insert_vendor,
+    optional=True # Corresponds to the || true in the original shell command
+)
+"
+      - name: Build Recovery Image
+        run: |
+          set -xeuo pipefail
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          # Inject TARGET_PLATFORM_VERSION=SP2A.220305.012 into device's BoardConfig.mk (creates if missing)
+          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
+
+          # Now, start the subshell to capture all build output
+          {
+            touch build.log
+            set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
+            
+            # --- START DEBUGGING (within main build step, before sourcing) ---
+            echo "=================================================="
+            echo "DEBUG: Checking for Android.mk before sourcing (main build step):"
+            ls -l frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: Android.mk NOT FOUND in main step!"
+            echo "Content of Android.mk:"
+            cat frameworks/base/services/core/xsd/vts/Android.mk || echo "CANNOT CAT Android.mk in main step!"
+            echo "Current working directory (main build step): $(pwd)"
+            echo "=================================================="
+            # --- END DEBUGGING ---
+
+            source build/envsetup.sh
+            set +e # Temporarily disable exit on error for vendorsetup.sh
+            source vendor/twrp/build/envsetup.sh || true # Use || true to prevent job failure if this file isn't always present or errors
+            set -e # Re-enable exit on error
+
+            set -u # Re-enable unbound variable check
+
+            export ALLOW_MISSING_DEPENDENCIES=true
+            export OUT_DIR=$(pwd)/out
+            export OUT=$OUT_DIR
+
+            echo "Running lunch..."
+            lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
+            
+            echo "TARGET_PRODUCT=$TARGET_PRODUCT"
+            echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
+            echo "TARGET_DEVICE=$TARGET_DEVICE"
+            
+            make -j$(nproc) recoveryimage
+          } 2>&1 | tee build.log
+        continue-on-error: true
+        
+      - name: Check output files
+        run: |
+          set -x
+          # Using || true so the step doesn't fail if the directory is empty or doesn't exist
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product || true
+          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/* || true
+
+      - name: Show build log (tail)
+        run: |
+          echo "::group::Last 100 lines of build.log"
+          if [[ -f workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log ]]; then
+            tail -n 100 workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+          else
+            echo "build.log not found!"
+          fi
+          echo "::endgroup::"
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+
+      - name: Upload Build Output
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
+            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
+          name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
+          tag_name: ${{ github.run_id }}
           body: |
             Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
             Device: ${{ github.event.inputs.DEVICE_NAME }}
