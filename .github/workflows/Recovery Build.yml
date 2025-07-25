@@ -92,18 +92,14 @@ jobs:
           echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
 
 
-      - name: Sync OrangeFox sources
+      - name: Sync OrangeFox sources and minimal manifest
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}
-          if [ ! -d fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifests ]; then
-            git clone ${{ github.event.inputs.SYNC_URL }} sync
-            cd sync
-            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} \
-              --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          fi
-          cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          repo sync -c -j$(nproc) --no-tags --no-clone-bundle
-
+         cd ${{ steps.pwd.outputs.workspace-folder }}
+         git clone ${{ github.event.inputs.SYNC_URL }}
+         cd sync
+         ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+      
       # This optional step helps verify that the device tree is cloned properly
       - name: Debug:List device tree
         run: |
