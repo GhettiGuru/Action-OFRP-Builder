@@ -88,7 +88,7 @@ jobs:
         run: |
           mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
           echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
- 
+
       - name: Restore OrangeFox manifest cache (repo only)
         uses: actions/cache@v4
         with:
@@ -97,13 +97,12 @@ jobs:
           key: ofrp-repo-${{ github.sha }}
           restore-keys: |
             ofrp-repo-
-            
-      - name: Sync OrangeFox sources and minimal manifest
+
+      - name: Shallow Sync OrangeFox sources
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}
-          git clone ${{ github.event.inputs.SYNC_URL }} sync
-          cd sync
-          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} --depth=1
+          repo sync -c --no-tags --no-clone-bundle -j$(nproc)
 
       - name: Patch envsetup.sh for unbound variables
         run: |
