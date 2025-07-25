@@ -128,60 +128,26 @@ jobs:
 
     
 # NEW STEP: Pre-create required Android.mk file
-      - name: Create Dummy Android.mk
-        run: |
-          set -xeuo pipefail
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          ANDROID_MK_PATH="frameworks/base/services/core/xsd/vts/Android.mk"
-          mkdir -p "$(dirname "$ANDROID_MK_PATH")"
-          # The key fix is to put single quotes around 'EOF' to prevent shell variable expansion
-          # and tell YAML to treat the following block as literal text.
-          cat <<'EOF' > "$ANDROID_MK_PATH"
-          LOCAL_PATH := $(call my-dir)
-          include $(CLEAR_VARS)
-          include $(BUILD_STATIC_LIBRARY)
-          EOF
-          echo "Created dummy Android.mk at: $ANDROID_MK_PATH"
-          ls -l "$ANDROID_MK_PATH"
+      - name: Create sed injection script
+  run: |
+    cat <<'EOF' > inject-sed.sh
+    #!/bin/bash
+    set -xeuo pipefail
+    BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
+    sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
+echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >> /dev/stderr\n\
+echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr\n\
+echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr\n\
+ls -l \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >> /dev/stderr || echo "DEBUG-INJECT: (build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr\n\
+echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \$( [ -s \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >> /dev/stderr' \
+"${BUILD_TOP_PATH}/build/envsetup.sh"
+    EOF
+    chmod +x inject-sed.sh
 
-      - name: Set Swap Space
-        uses: pierotofy/set-swap-space@master
-        with:
-          swap-size-gb: 12
-          
-      - name: Debug:List device tree and current working directory
-        run: |
-          echo "Current working directory: $(pwd)"
-          ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
-          
-      - name: Inject Debugging into envsetup.sh
-        run: |
-          set -x
-          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
+- name: Run sed injection
+  run: ./inject-sed.sh
 
-          # Inject into build/envsetup.sh
-          # This inserts debug commands right before the Android.mk check.
-          sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
-echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >> /dev/stderr \
-echo "DEBUG-INJECT: (build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr \
-echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr \
-ls -l "\$T/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr \
-echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \$( [ -s "\$T/frameworks/base/services/core/xsd/vts/Android.mk" ] && echo "TRUE" || echo "FALSE" )" >> /dev/stderr
-          ' "${BUILD_TOP_PATH}/build/envsetup.sh"
-
-          # Inject into vendor/twrp/build/envsetup.sh (if it exists and is sourced)
-          # We are targeting the same check, which might be within orangefox_envsetup or similar.
-          # This sed command might need to be adapted based on the exact line in your vendorsetup.sh
-          # that calls orangefox_envsetup or performs the check.
-          # For robustness, we're using a common pattern.
-          sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >> /dev/stderr \
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr \
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr \
-ls -l "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr \
-echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \$( [ -s "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" ] && echo "TRUE" || echo "FALSE" )" >> /dev/stderr
-          ' "${BUILD_TOP_PATH}/vendor/twrp/build/envsetup.sh" || true # || true to prevent failure if file doesn't exist or line is not found
-
+      
       - name: Build Recovery Image
         run: |
           set -xeuo pipefail
