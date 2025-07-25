@@ -1,39 +1,57 @@
 import os
 import re
-from pathlib import Path
 
-top_path = os.environ.get("BUILD_TOP_PATH")
-if not top_path:
-    raise ValueError("BUILD_TOP_PATH environment variable not set")
+def should_ignore_file(file_path):
+    ignore_paths = [
+        'external/',
+        'prebuilts/',
+        'kernel/',
+        'hardware/qcom/',
+        'vendor/qcom/',
+        'device/qcom/',
+    ]
+    return any(file_path.startswith(p) for p in ignore_paths)
 
-TARGET_FILE = Path(top_path) / "build/envsetup.sh"
+def inject_debug_lines(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
 
-print(f"[inject] Patching {TARGET_FILE}")
-if not TARGET_FILE.exists():
-    raise FileNotFoundError(f"{TARGET_FILE} does not exist")
+    updated_lines = []
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
 
-with open(TARGET_FILE, "r", encoding="utf-8") as f:
-    lines = f.readlines()
+        # Skip empty lines or comments
+        if not stripped or stripped.startswith("#"):
+            updated_lines.append(line)
+            continue
 
-new_lines = []
-for idx, line in enumerate(lines):
-    new_lines.append(line)
+        # Avoid injecting inside multi-line assignments like T=$(pwd)
+        assignment_match = re.match(r'^\s*(\w+)\s*=.*', line)
+        if assignment_match and 'pwd' in line:
+            updated_lines.append(line)
+            updated_lines.append(f'echo "[DEBUG] {file_path}:{idx+1} - {assignment_match.group(1)} set to $(pwd)"\n')
+            continue
 
-    # Inject debug echo only after 'if' lines, not 'fi' or empty ones
-    if re.match(r'^\s*if\s.*;\s*then\s*$', line):
-        new_lines.append('    echo "[DEBUG] Entered condition at line {}"\n'.format(idx + 1))
+        # Inject echo for common shell functions and commands
+        if re.match(r'^\s*(if|for|while|case|function|\w+\(\))\b', stripped):
+            updated_lines.append(line)
+            updated_lines.append(f'echo "[DEBUG] {file_path}:{idx+1} - Entered: {stripped.split()[0]}"\n')
+            continue
 
-    # Optionally log export or cd lines
-    elif re.match(r'^\s*export\s', line):
-        new_lines.append(f'    echo "[DEBUG] Exporting: {line.strip()}"\n')
+        updated_lines.append(line)
 
-    elif re.match(r'^\s*cd\s', line) or re.match(r'^\s*cd\s', line.replace("\\", "")):
-        new_lines.append(f'    echo "[DEBUG] Changing directory: {line.strip()}"\n')
+    with open(file_path, 'w') as f:
+        f.writelines(updated_lines)
 
-# Avoid duplicate injections
-if lines != new_lines:
-    with open(TARGET_FILE, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
-        print("[inject] Debug lines successfully injected.")
-else:
-    print("[inject] No changes made; already patched.")
+def walk_and_inject(root_dir):
+    for root, _, files in os.walk(root_dir):
+        for name in files:
+            if name.endswith('.sh'):
+                full_path = os.path.join(root, name)
+                rel_path = os.path.relpath(full_path, root_dir)
+                if not should_ignore_file(rel_path):
+                    inject_debug_lines(full_path)
+
+if __name__ == "__main__":
+    build_top = os.environ.get("BUILD_TOP_PATH", os.getcwd())
+    walk_and_inject(build_top)
