@@ -144,7 +144,7 @@ jobs:
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
             touch frameworks/base/services/core/xsd/vts/Android.mk
-            lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-eng
+            lunch ${{ github.event.inputs.DEVICE_NAME }}-eng || lunch ${{ github.event.inputs.DEVICE_NAME }}-eng
             make -j$(nproc) recoveryimage
           } 2>&1 | tee build.log
         continue-on-error: true
