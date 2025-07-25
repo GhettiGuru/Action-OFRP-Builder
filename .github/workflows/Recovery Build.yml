@@ -91,14 +91,6 @@ jobs:
           mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
           echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
 
-      - name: Restore OrangeFox .repo Cache
-        uses: actions/cache@v4
-        with:
-          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
-          restore-keys: |
-            ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}-
-            ofrp-repo-
 
       - name: Sync OrangeFox sources
         run: |
