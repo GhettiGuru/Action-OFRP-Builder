@@ -22,7 +22,7 @@ on:
       DEVICE_PATH:
         description: 'DEVICE_PATH'
         required: true
-        default: 'device/nubia/nxj729un'
+        default: 'device/nubia/nx729j'
       COMMON_TREE_URL:
         description: 'COMMON_TREE_URL (optional)'
         required: false
