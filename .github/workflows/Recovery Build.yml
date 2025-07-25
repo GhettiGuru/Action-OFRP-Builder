@@ -10,7 +10,7 @@ on:
       MANIFEST_BRANCH:
         description: 'MANIFEST_BRANCH'
         required: true
-        default: '12.1'
+        default: 'fox_12.1'
       DEVICE_TREE_URL:
         description: 'DEVICE_TREE_URL'
         required: true
@@ -61,12 +61,13 @@ jobs:
 
       - name: Install Build Dependencies
         run: |
-          sudo apt update && sudo apt full-upgrade -y && sudo apt -y install \
+          sudo apt update && sudo apt full-upgrade -y && sudo apt install -y \
             bc bison build-essential ccache curl flex g++-multilib \
             gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
             lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
             libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 \
-            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk aria2 repo gh git dos2unix
+            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk \
+            aria2 repo gh git dos2unix
 
       - name: Set up Java 11
         uses: actions/setup-java@v4
@@ -106,24 +107,27 @@ jobs:
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
 
-      - name: Conditionally Sync OrangeFox sources
+      - name: Conditionally Sync OrangeFox Sources
         run: |
-         cd ${{ steps.pwd.outputs.workspace-folder }}
-         if [ -d "fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifests" ]; then
-         echo "🟢 .repo cache found - using shallow sync"
-         git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
-         cd sync
-         ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-         else
-         echo "🔴 .repo cache NOT found - performing full repo init/sync"
-         mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-         cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-         repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
-         repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
-         fi
+          cd ${{ steps.pwd.outputs.workspace-folder }}
 
+          if [ -f fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifest.xml ]; then
+            echo "🟢 .repo cache found - using orangefox_sync.sh for resync"
+            git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
+            cd sync
+            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          else
+            echo "🔴 .repo cache NOT found - full repo init/sync"
+            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} || {
+              echo "❌ Repo init failed - branch may not exist"
+              exit 1
+            }
+            repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
+          fi
 
-      - name: Patch envsetup.sh for safe variable access
+      - name: Patch envsetup.sh for safer access
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build
           dos2unix envsetup.sh || true
@@ -141,7 +145,7 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
-      - name: Inject debug print statements
+      - name: Inject Debug Print Statements
         run: python3 .github/scripts/inject_debug.py
         env:
           BUILD_TOP_PATH: "${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
@@ -173,7 +177,7 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ github.event.inputs.DEVICE_NAME }}-${{ github.sha }}
 
-      - name: Save OrangeFox .repo Cache (after full sync)
+      - name: Save OrangeFox .repo Cache (if new sync)
         if: steps.cache-ofrp.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
