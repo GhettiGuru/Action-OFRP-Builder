@@ -155,28 +155,24 @@ jobs:
         run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
 
-          {
-            touch build.log
-            set +u
-            echo "DEBUG: Current directory: $(pwd)"
-            source build/envsetup.sh
-            set +e
-            source vendor/twrp/build/envsetup.sh || true
-            set -e
-            set -u
-            export ALLOW_MISSING_DEPENDENCIES=true
-            export OUT_DIR=$(pwd)/out
-            export OUT=$OUT_DIR
-            export USE_CCACHE=1
-            export CCACHE_EXEC=$(which ccache)
+          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> "${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk"
+          touch build.log
+          echo "DEBUG: Current directory: $(pwd)"
+          
+          set +u
+          source build/envsetup.sh
+          source vendor/twrp/build/envsetup.sh || true
+          set -u
+          
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export OUT_DIR=$(pwd)/out
+          export OUT=$OUT_DIR
+          
+          echo "Running lunch..."
+          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
 
-            echo "Running lunch..."
-            lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
-
-            make -j$(nproc) recoveryimage
-          } 2>&1 | tee build.log
+          make -j$(nproc) recoveryimage
         continue-on-error: true
 
       - name: Save ccache
