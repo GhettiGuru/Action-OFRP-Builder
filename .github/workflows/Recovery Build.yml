@@ -138,8 +138,8 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
-      - name: Create Dummy Android.mk
-        run: |
+            - name: Create Dummy Android.mk
+                run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           ANDROID_MK_PATH="frameworks/base/services/core/xsd/vts/Android.mk"
@@ -148,10 +148,12 @@ jobs:
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
+
 include $(BUILD_STATIC_LIBRARY)
 EOF
           echo "Created dummy Android.mk at: $ANDROID_MK_PATH"
           ls -l "$ANDROID_MK_PATH"
+
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
