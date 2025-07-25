@@ -1,4 +1,4 @@
-name: Recovery Build
+tname: Recovery Build
 
 on:
   workflow_dispatch:
@@ -141,14 +141,23 @@ jobs:
         run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          touch build.log # Create an empty build log initially
 
           # Inject TARGET_PLATFORM_VERSION=SP2A.220305.012 into device's BoardConfig.mk (creates if missing)
           # Make sure to append (>>) to avoid overwriting existing content if the file already exists.
           echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
 
-          # Use a subshell to manage environment for sourcing scripts without affecting the main shell
+          # Ensure frameworks/base/services/core/xsd/vts/Android.mk exists and is not empty.
+          # Create it if it doesn't exist, or overwrite if empty, with minimal valid content.
+          # This satisfies the '-s' check in envsetup.sh
+          mkdir -p frameworks/base/services/core/xsd/vts # Ensure directory exists
+          echo "LOCAL_PATH := $(call my-dir)" > frameworks/base/services/core/xsd/vts/Android.mk
+          echo "include $(CLEAR_VARS)" >> frameworks/base/services/core/xsd/vts/Android.mk
+          echo "include $(BUILD_STATIC_LIBRARY)" >> frameworks/base/services/core/xsd/vts/Android.mk
+
+          # Now, start the subshell to capture all build output
           {
+            touch build.log # Create an empty build log initially within the subshell, or let tee create it.
+
             set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
             source build/envsetup.sh
             # Allow vendor/twrp/build/envsetup.sh to fail without stopping the whole script
@@ -159,15 +168,6 @@ jobs:
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
 
-            # FIX: Ensure frameworks/base/services/core/xsd/vts/Android.mk exists and is not empty.
-            # Create it if it doesn't exist, or overwrite if empty, with minimal valid content.
-            # This satisfies the '-s' check in envsetup.sh
-            mkdir -p frameworks/base/services/core/xsd/vts # Ensure directory exists
-            echo "LOCAL_PATH := \$(call my-dir)" > frameworks/base/services/core/xsd/vts/Android.mk
-            echo "include \$(CLEAR_VARS)" >> frameworks/base/services/core/xsd/vts/Android.mk
-            echo "include \$(BUILD_STATIC_LIBRARY)" >> frameworks/base/services/core/xsd/vts/Android.mk
-
-
             echo "Running lunch..."
             lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
             echo "TARGET_PRODUCT=$TARGET_PRODUCT"
@@ -175,14 +175,8 @@ jobs:
             echo "TARGET_DEVICE=$TARGET_DEVICE"
             make -j$(nproc) recoveryimage
           } 2>&1 | tee build.log # Redirect all output to build.log and console
-        continue-on-error: true # Keep this if you want to proceed even if build fails for other reasons
-
-      - name: Check output files
-        run: |
-          set -x
-          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product || true
-          ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/* || true
-
+        continue-on-error: true
+        
       - name: Show build log (tail)
         run: |
           echo "::group::Last 100 lines of build.log"
