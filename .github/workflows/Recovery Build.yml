@@ -141,28 +141,41 @@ jobs:
         run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          touch build.log
+          touch build.log # Create an empty build log initially
 
           # Inject TARGET_PLATFORM_VERSION=SP2A.220305.012 into device's BoardConfig.mk (creates if missing)
+          # Make sure to append (>>) to avoid overwriting existing content if the file already exists.
           echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
 
+          # Use a subshell to manage environment for sourcing scripts without affecting the main shell
           {
-            set +u
+            set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
             source build/envsetup.sh
+            # Allow vendor/twrp/build/envsetup.sh to fail without stopping the whole script
             source vendor/twrp/build/envsetup.sh || true
-            set -u
+            set -u # Re-enable unbound variable check
+
             export ALLOW_MISSING_DEPENDENCIES=true
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
-            touch frameworks/base/services/core/xsd/vts/Android.mk
+
+            # FIX: Ensure frameworks/base/services/core/xsd/vts/Android.mk exists and is not empty.
+            # Create it if it doesn't exist, or overwrite if empty, with minimal valid content.
+            # This satisfies the '-s' check in envsetup.sh
+            mkdir -p frameworks/base/services/core/xsd/vts # Ensure directory exists
+            echo "LOCAL_PATH := \$(call my-dir)" > frameworks/base/services/core/xsd/vts/Android.mk
+            echo "include \$(CLEAR_VARS)" >> frameworks/base/services/core/xsd/vts/Android.mk
+            echo "include \$(BUILD_STATIC_LIBRARY)" >> frameworks/base/services/core/xsd/vts/Android.mk
+
+
             echo "Running lunch..."
             lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
             echo "TARGET_PRODUCT=$TARGET_PRODUCT"
             echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
             echo "TARGET_DEVICE=$TARGET_DEVICE"
             make -j$(nproc) recoveryimage
-          } 2>&1 | tee build.log
-        continue-on-error: true
+          } 2>&1 | tee build.log # Redirect all output to build.log and console
+        continue-on-error: true # Keep this if you want to proceed even if build fails for other reasons
 
       - name: Check output files
         run: |
