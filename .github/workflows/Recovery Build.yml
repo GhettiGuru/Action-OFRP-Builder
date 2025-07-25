@@ -1,4 +1,3 @@
- secrets.GH_TOKEN }}
 name: Recovery Build
 
 on:
