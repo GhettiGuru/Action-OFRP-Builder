@@ -136,14 +136,21 @@ jobs:
           swap-size-gb: 12
 
       - name: Building Recovery
+        shell: bash
+        continue-on-error: true
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          source build/envsetup.sh
-          export ALLOW_MISSING_DEPENDENCIES=true
-          lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
-          make clean
-          mka adbd ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
-
+         cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+         source build/envsetup.sh
+         export ALLOW_MISSING_DEPENDENCIES=true
+         lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng
+         make clean
+         mka ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all) | tee build.log
+         EXIT_CODE=${PIPESTATUS[0]}
+         echo "Build exited with code $EXIT_CODE"
+         echo "======== LOG TAIL ==========="
+         tail -n 100 build.log
+         exit $EXIT_CODE
+        
       - name: Check Output Directory
         run: |
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/
