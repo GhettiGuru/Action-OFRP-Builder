@@ -14,7 +14,7 @@ on:
       DEVICE_TREE_URL:
         description: 'DEVICE_TREE_URL'
         required: true
-        default: 'https://github.com/GhettiGuru/Redmagic-8-tree'
+        default: 'https://github.com/GhettiGuru/Nubia-Redmagic-8s-Pro-TWRPTree/tree/NX729J-user-13-TKQ1.221013.002-eng.nubia.20230808.003009-release-keys'
       DEVICE_TREE_BRANCH:
         description: 'DEVICE_TREE_BRANCH'
         required: true
@@ -22,7 +22,7 @@ on:
       DEVICE_PATH:
         description: 'DEVICE_PATH'
         required: true
-        default: 'device/nubia/nx729j'
+        default: 'device/nubia/NX729J'
       COMMON_TREE_URL:
         description: 'COMMON_TREE_URL (optional)'
         required: false
@@ -32,11 +32,11 @@ on:
       DEVICE_NAME:
         description: 'DEVICE_NAME'
         required: true
-        default: 'twrp_nx729j'
+        default: 'omni_nx729j'
       MAKEFILE_NAME:
         description: 'MAKEFILE_NAME'
         required: true
-        default: 'twrp_nx729j'
+        default: 'omni_NX729J'
       BUILD_VARIANT:
         description: 'Build variant (eng or userdebug)'
         required: true
