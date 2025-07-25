@@ -112,14 +112,10 @@ jobs:
           cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           repo sync -c -j$(nproc) --no-tags --no-clone-bundle
 
+      # This optional step helps verify that the device tree is cloned properly
       - name: Debug: List device tree
         run: |
           ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
-
-# ⚠️ Make sure you have a .repo/local_manifests/*.xml file that includes:
-# <manifest>
-#   <project path="device/nubia/nx729j" name="YourGitHub/device_nubia_nx729j" remote="github" revision="main" />
-# </manifest>
 
       - name: Patch envsetup.sh for unbound variables
         run: |
@@ -157,6 +153,10 @@ jobs:
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           touch build.log
+
+          # Inject TARGET_PLATFORM_VERSION=SP2A.220305.012 into device's BoardConfig.mk (creates if missing)
+          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
+
           {
             set +u
             source build/envsetup.sh
@@ -208,6 +208,5 @@ jobs:
           body: |
             Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
             Device: ${{ github.event.inputs.DEVICE_NAME }}
-            Target: ${{ github.event.inputs.BUILD_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
