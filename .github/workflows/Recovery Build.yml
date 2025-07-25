@@ -160,12 +160,17 @@ jobs:
 
           # Now, start the subshell to capture all build output
           {
-            touch build.log # Create an empty build log initially within the subshell, or let tee create it.
+            touch build.log
 
-            set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
+            set +u # Temporarily disable unbound variable check
             source build/envsetup.sh
-            # Allow vendor/twrp/build/envsetup.sh to fail without stopping the whole script
+            
+            # The OrangeFox envsetup script has a bug where a bare test command
+            # fails with 'set -e'. We disable it temporarily to work around this.
+            set +e
             source vendor/twrp/build/envsetup.sh
+            set -e
+            
             set -u # Re-enable unbound variable check
 
             export ALLOW_MISSING_DEPENDENCIES=true
@@ -174,13 +179,15 @@ jobs:
 
             echo "Running lunch..."
             lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
+            
             echo "TARGET_PRODUCT=$TARGET_PRODUCT"
             echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
             echo "TARGET_DEVICE=$TARGET_DEVICE"
+            
             make -j$(nproc) recoveryimage
-          } 2>&1 | tee build.log # Redirect all output to build.log and console
+          } 2>&1 | tee build.log
         continue-on-error: true
-
+        
       - name: Check output files
         run: |
           set -x
