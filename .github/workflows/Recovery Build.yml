@@ -40,7 +40,7 @@ on:
       BUILD_TARGET:
         description: 'BUILD_TARGET'
         required: true
-        default: 'twrp_nx729j-eng'
+        default: 'recovery'
 
 jobs:
   build:
@@ -101,20 +101,17 @@ jobs:
           restore-keys: |
             ofrp-repo-
 
-      - name: Clone & Sync OrangeFox Sources
+      - name: Sync OrangeFox sources
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}
-
-          # Clone sync scripts
-          git clone ${{ github.event.inputs.SYNC_URL }} sync
-          cd sync
-
-          # Run sync with fast options
-          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} \
-            --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-
-          cd ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          if [ ! -d fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo ]; then
+            git clone ${{ github.event.inputs.SYNC_URL }} sync
+            cd sync
+            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} \
+              --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          fi
+          cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           repo sync -c -j$(nproc) --no-tags --no-clone-bundle
 
       - name: Save OrangeFox .repo Cache
@@ -145,17 +142,19 @@ jobs:
         run: |
           set -xeuo pipefail
           cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          source build/envsetup.sh
-          source vendor/twrp/build/envsetup.sh || true
-          export ALLOW_MISSING_DEPENDENCIES=true
-          export OUT_DIR=$(pwd)/out
-          export OUT=$OUT_DIR
-
-          # Fix Android.mk error if needed
-          touch frameworks/base/services/core/xsd/vts/Android.mk
-
-          lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
-          make -j$(nproc) recoveryimage 2>&1 | tee build.log
+          touch build.log
+          {
+            set +u
+            source build/envsetup.sh
+            source vendor/twrp/build/envsetup.sh || true
+            set -u
+            export ALLOW_MISSING_DEPENDENCIES=true
+            export OUT_DIR=$(pwd)/out
+            export OUT=$OUT_DIR
+            touch frameworks/base/services/core/xsd/vts/Android.mk
+            lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
+            make -j$(nproc) recoveryimage
+          } 2>&1 | tee build.log
         continue-on-error: true
 
       - name: Build Recovery Image x2
@@ -173,10 +172,7 @@ jobs:
             export OUT=$OUT_DIR
             [[ -s frameworks/base/services/core/xsd/vts/Android.mk ]] || true
             lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
-            make -j$(nproc) recoveryimage
-          } 2>&1 | tee build.log
-        continue-on-error: true
-        
+            make -j$(nproc) recov
 
       - name: Check output files
         run: |
