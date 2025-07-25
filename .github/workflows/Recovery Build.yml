@@ -156,15 +156,16 @@ jobs:
 
       - name: Build Recovery Image
         run: |
-          set -xeuo pipefail
+          set -xeo pipefail
           cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
-          lunch ${{ github.event.inputs.DEVICE_NAME }}-eng || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
-          make -j$(nproc) ${{ github.event.inputs.BUILD_TARGET }}image 2>&1 | tee build.log
+          [[ -s frameworks/base/services/core/xsd/vts/Android.mk ]] || true
+          lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
+          make -j$(nproc) recoveryimage 2>&1 | tee build.log
         continue-on-error: true
 
       - name: Check output files
