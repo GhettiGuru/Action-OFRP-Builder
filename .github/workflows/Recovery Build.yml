@@ -4,43 +4,43 @@ on:
   workflow_dispatch:
     inputs:
       SYNC_URL:
-        description: 'SYNC_URL'
+        description: SYNC_URL
         required: true
-        default: 'https://gitlab.com/OrangeFox/sync.git'
+        default: https://gitlab.com/OrangeFox/sync.git
       MANIFEST_BRANCH:
-        description: 'MANIFEST_BRANCH'
+        description: MANIFEST_BRANCH
         required: true
-        default: '12.1'
+        default: "12.1"
       DEVICE_TREE_URL:
-        description: 'DEVICE_TREE_URL'
+        description: DEVICE_TREE_URL
         required: true
-        default: 'https://github.com/GhettiGuru/Redmagic-8-tree'
+        default: https://github.com/GhettiGuru/Redmagic-8-tree
       DEVICE_TREE_BRANCH:
-        description: 'DEVICE_TREE_BRANCH'
+        description: DEVICE_TREE_BRANCH
         required: true
-        default: 'android_12.1'
+        default: android_12.1
       DEVICE_PATH:
-        description: 'DEVICE_PATH'
+        description: DEVICE_PATH
         required: true
-        default: 'device/nubia/nx729j'
+        default: device/nubia/nx729j
       COMMON_TREE_URL:
-        description: 'COMMON_TREE_URL (optional)'
+        description: COMMON_TREE_URL (optional)
         required: false
       COMMON_PATH:
-        description: 'COMMON_PATH (optional)'
+        description: COMMON_PATH (optional)
         required: false
       DEVICE_NAME:
-        description: 'DEVICE_NAME'
+        description: DEVICE_NAME
         required: true
-        default: 'twrp_nx729j'
+        default: twrp_nx729j
       MAKEFILE_NAME:
-        description: 'MAKEFILE_NAME'
+        description: MAKEFILE_NAME
         required: true
-        default: 'twrp_nx729j'
+        default: twrp_nx729j
       BUILD_VARIANT:
-        description: 'Build variant (eng or userdebug)'
+        description: Build variant (eng or userdebug)
         required: true
-        default: 'eng'
+        default: eng
 
 jobs:
   build:
@@ -112,7 +112,6 @@ jobs:
           cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           repo sync -c -j$(nproc) --no-tags --no-clone-bundle
 
-      # This optional step helps verify that the device tree is cloned properly
       - name: Debug:List device tree
         run: |
           ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
@@ -137,28 +136,25 @@ jobs:
           git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
 
       - name: Clone Common Tree (if defined)
-        if: github.event.inputs.COMMON_TREE_URL != ''
+        if: ${{ github.event.inputs.COMMON_TREE_URL != '' }}
         run: |
           set -x
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
-      # NEW STEP: Pre-create required Android.mk file
       - name: Create Dummy Android.mk
         run: |
-          set -xeuo pipefail # Use strict error checking for this setup step too
+          set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           ANDROID_MK_PATH="frameworks/base/services/core/xsd/vts/Android.mk"
-          mkdir -p "$(dirname "$ANDROID_MK_PATH")" # Ensure directory exists
-          # Create it with minimal valid content. This satisfies the '-s' check.
-          # Use 'cat <<EOF >' for multi-line string to avoid issues with quoting/escaping.
+          mkdir -p "$(dirname "$ANDROID_MK_PATH")"
           cat <<EOF > "$ANDROID_MK_PATH"
-LOCAL_PATH := $(call my-dir)
-include $(CLEAR_VARS)
-include $(BUILD_STATIC_LIBRARY)
+LOCAL_PATH := \$(call my-dir)
+include \$(CLEAR_VARS)
+include \$(BUILD_STATIC_LIBRARY)
 EOF
           echo "Created dummy Android.mk at: $ANDROID_MK_PATH"
-          ls -l "$ANDROID_MK_PATH" # Verify creation and size
+          ls -l "$ANDROID_MK_PATH"
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
@@ -169,37 +165,28 @@ EOF
         run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-
-          # Inject TARGET_PLATFORM_VERSION=SP2A.220305.012 into device's BoardConfig.mk (creates if missing)
           echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
-
-          # Now, start the subshell to capture all build output
           {
-            touch build.log # Create an empty build log initially within the subshell, or let tee create it.
-
-            set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
+            touch build.log
+            set +u
             source build/envsetup.sh
-            # Allow vendor/twrp/build/envsetup.sh to fail without stopping the whole script
             source vendor/twrp/build/envsetup.sh || true
-            set -u # Re-enable unbound variable check
-
+            set -u
             export ALLOW_MISSING_DEPENDENCIES=true
             export OUT_DIR=$(pwd)/out
             export OUT=$OUT_DIR
-
             echo "Running lunch..."
             lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || { echo "Lunch failed!"; exit 1; }
             echo "TARGET_PRODUCT=$TARGET_PRODUCT"
             echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
             echo "TARGET_DEVICE=$TARGET_DEVICE"
             make -j$(nproc) recoveryimage
-          } 2>&1 | tee build.log # Redirect all output to build.log and console
+          } 2>&1 | tee build.log
         continue-on-error: true
 
       - name: Check output files
         run: |
           set -x
-          # Using || true so the step doesn't fail if the directory is empty or doesn't exist
           ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product || true
           ls -al workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/* || true
 
