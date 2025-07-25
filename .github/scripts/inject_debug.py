@@ -1,63 +1,39 @@
 import os
 import re
+from pathlib import Path
 
-BUILD_TOP = os.environ.get("BUILD_TOP_PATH")
-if not BUILD_TOP:
-    raise RuntimeError("BUILD_TOP_PATH environment variable not set")
+top_path = os.environ.get("BUILD_TOP_PATH")
+if not top_path:
+    raise ValueError("BUILD_TOP_PATH environment variable not set")
 
-debug_echo = 'echo "DEBUG-INJECT: ({file}) CWD: $(pwd)" >&2\n'
+TARGET_FILE = Path(top_path) / "build/envsetup.sh"
 
-# Matches any line with -s and Android.mk (with or without full path, quotes, or brackets)
-android_mk_pattern = re.compile(
-    r"""
-    (?P<prefix>.*)            # any leading code
-    \[\s*-s\s+                # [ -s 
-    (?P<path>[^ \]]*Android\.mk)  # path/to/Android.mk
-    \s*\]                     # ]
-    (?P<suffix>.*)            # anything after
-    """,
-    re.VERBOSE,
-)
+print(f"[inject] Patching {TARGET_FILE}")
+if not TARGET_FILE.exists():
+    raise FileNotFoundError(f"{TARGET_FILE} does not exist")
 
-files_to_patch = [
-    os.path.join(BUILD_TOP, "build/envsetup.sh"),
-    os.path.join(BUILD_TOP, "vendor/twrp/build/envsetup.sh"),
-]
+with open(TARGET_FILE, "r", encoding="utf-8") as f:
+    lines = f.readlines()
 
-for filepath in files_to_patch:
-    if not os.path.exists(filepath):
-        continue
+new_lines = []
+for idx, line in enumerate(lines):
+    new_lines.append(line)
 
-    print(f"[inject] Patching {filepath}")
+    # Inject debug echo only after 'if' lines, not 'fi' or empty ones
+    if re.match(r'^\s*if\s.*;\s*then\s*$', line):
+        new_lines.append('    echo "[DEBUG] Entered condition at line {}"\n'.format(idx + 1))
 
-    with open(filepath, "r") as f:
-        lines = f.readlines()
+    # Optionally log export or cd lines
+    elif re.match(r'^\s*export\s', line):
+        new_lines.append(f'    echo "[DEBUG] Exporting: {line.strip()}"\n')
 
-    modified_lines = []
-    injected = False
-    for line in lines:
-        if not injected:
-            modified_lines.append(
-                debug_echo.format(file=os.path.relpath(filepath, BUILD_TOP))
-            )
-            injected = True
+    elif re.match(r'^\s*cd\s', line) or re.match(r'^\s*cd\s', line.replace("\\", "")):
+        new_lines.append(f'    echo "[DEBUG] Changing directory: {line.strip()}"\n')
 
-        mk_check = android_mk_pattern.search(line)
-        if mk_check:
-            path = mk_check.group("path")
-            safe_block = (
-                f'# DEBUG-INJECT: Safe Android.mk check wrapper for {path}\n'
-                f'if [ ! -s "{path}" ]; then\n'
-                f'    echo "WARNING: Missing or empty {path} ignored" >&2\n'
-                f'else\n'
-                f'    {line.strip()}\n'
-                f'fi\n'
-            )
-            modified_lines.append(safe_block)
-        else:
-            modified_lines.append(line)
-
-    with open(filepath, "w") as f:
-        f.writelines(modified_lines)
-
-    print(f"[inject] ✅ Done patching {filepath}")
+# Avoid duplicate injections
+if lines != new_lines:
+    with open(TARGET_FILE, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+        print("[inject] Debug lines successfully injected.")
+else:
+    print("[inject] No changes made; already patched.")
