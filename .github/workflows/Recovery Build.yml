@@ -137,42 +137,25 @@ jobs:
           swap-size-gb: 12
 
       - name: Build Recovery Image
-        run: |
-          set -xeo pipefail
-          cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          touch build.log
-          {
-            set +u
-            source build/envsetup.sh
-            source vendor/twrp/build/envsetup.sh || true
-            set -u
-            export ALLOW_MISSING_DEPENDENCIES=true
-            export OUT_DIR=$(pwd)/out
-            export OUT=$OUT_DIR
-            touch frameworks/base/services/core/xsd/vts/Android.mk
-            lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
-            make -j$(nproc) recoveryimage
-          } 2>&1 | tee build.log
-        continue-on-error: true
+  run: |
+    set -xeuo pipefail
+    export BUILD_VAR_CACHE_READY=false
+    cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+    touch build.log
+    {
+      set +u
+      source build/envsetup.sh
+      source vendor/twrp/build/envsetup.sh || true
+      set -u
+      export ALLOW_MISSING_DEPENDENCIES=true
+      export OUT_DIR=$(pwd)/out
+      export OUT=$OUT_DIR
+      touch frameworks/base/services/core/xsd/vts/Android.mk
+      lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
+      make -j$(nproc) recoveryimage
+    } 2>&1 | tee build.log
+  continue-on-error: true
 
-      - name: Build Recovery Image x2
-        run: |
-          set -xeo pipefail
-          cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          touch build.log
-          {
-            set +u
-            source build/envsetup.sh
-            source vendor/twrp/build/envsetup.sh || true
-            set -u
-            export ALLOW_MISSING_DEPENDENCIES=true
-            export OUT_DIR=$(pwd)/out
-            export OUT=$OUT_DIR
-            [[ -s frameworks/base/services/core/xsd/vts/Android.mk ]] || true
-            lunch ${{ github.event.inputs.BUILD_TARGET }} || lunch ${{ github.event.inputs.DEVICE_NAME }}-userdebug
-            make -j$(nproc) recoveryimage
-          } 2>&1 | tee -a build.log
-        continue-on-error: true
 
       - name: Check output files
         run: |
