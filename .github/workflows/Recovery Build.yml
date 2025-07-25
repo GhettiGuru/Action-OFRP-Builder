@@ -120,11 +120,10 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
-      - name: Inject Debugging into envsetup.sh
-        run: |
-          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
-          export BUILD_TOP_PATH
-          python3 .github/scripts/inject_debug.py
+      - name: Inject debug print statements
+        run: python3 scripts/inject_debug.py
+        env:
+          BUILD_TOP_PATH: "${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
 
       - name: Build Recovery Image
         run: |
@@ -182,4 +181,3 @@ jobs:
             Device: ${{ github.event.inputs.DEVICE_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          
