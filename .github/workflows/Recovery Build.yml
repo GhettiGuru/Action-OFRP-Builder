@@ -95,7 +95,7 @@ jobs:
       - name: Sync OrangeFox sources and minimal manifest
         run: |
          cd ${{ steps.pwd.outputs.workspace-folder }}
-         git clone ${{ github.event.inputs.SYNC_URL }}
+         git clone ${{ github.event.inputs.SYNC_URL }} sync # Cloned into 'sync' directory
          cd sync
          ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}
@@ -136,10 +136,10 @@ jobs:
           # The key fix is to put single quotes around 'EOF' to prevent shell variable expansion
           # and tell YAML to treat the following block as literal text.
           cat <<'EOF' > "$ANDROID_MK_PATH"
-          LOCAL_PATH := $(call my-dir)
-          include $(CLEAR_VARS)
-          include $(BUILD_STATIC_LIBRARY)
-          EOF
+LOCAL_PATH := $(call my-dir) # <--- IMPORTANT: These lines MUST have NO leading spaces.
+include $(CLEAR_VARS)
+include $(BUILD_STATIC_LIBRARY)
+EOF
           echo "Created dummy Android.mk at: $ANDROID_MK_PATH"
           ls -l "$ANDROID_MK_PATH"
     
@@ -148,40 +148,67 @@ jobs:
         with:
           swap-size-gb: 12
           
-# This optional step helps verify that the device tree is cloned properly
-      - name: Debug:List device tree
+      - name: Debug: List device tree and current working directory
         run: |
+          echo "Current working directory: $(pwd)"
           ls -la workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/device/nubia/nx729j || echo "Device tree missing!"
           
+      - name: Inject Debugging into envsetup.sh
+        run: |
+          set -x
+          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
+
+          # Inject into build/envsetup.sh
+          # This inserts debug commands right before the Android.mk check.
+          sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
+echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >> /dev/stderr \
+echo "DEBUG-INJECT: (build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr \
+echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr \
+ls -l "\$T/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr \
+echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \$( [ -s "\$T/frameworks/base/services/core/xsd/vts/Android.mk" ] && echo "TRUE" || echo "FALSE" )" >> /dev/stderr
+          ' "${BUILD_TOP_PATH}/build/envsetup.sh"
+
+          # Inject into vendor/twrp/build/envsetup.sh (if it exists and is sourced)
+          # We are targeting the same check, which might be within orangefox_envsetup or similar.
+          # This sed command might need to be adapted based on the exact line in your vendorsetup.sh
+          # that calls orangefox_envsetup or performs the check.
+          # For robustness, we're using a common pattern.
+          sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i \
+echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >> /dev/stderr \
+echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \$(pwd)" >> /dev/stderr \
+echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr \
+ls -l "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >> /dev/stderr || echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Android.mk not found or empty here!" >> /dev/stderr \
+echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \$( [ -s "\$TOP/frameworks/base/services/core/xsd/vts/Android.mk" ] && echo "TRUE" || echo "FALSE" )" >> /dev/stderr
+          ' "${BUILD_TOP_PATH}/vendor/twrp/build/envsetup.sh" || true # || true to prevent failure if file doesn't exist or line is not found
+
       - name: Build Recovery Image
         run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          # Inject TARGET_PLATFORM_VERSION=SP2A.220305.012 into device's BoardConfig.mk (creates if missing)
+          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> ${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk
 
           # Now, start the subshell to capture all build output
           {
             touch build.log
+            set +u # Temporarily disable unbound variable check for sourcing envsetup.sh
+            
+            # --- START DEBUGGING (within main build step, before sourcing) ---
+            echo "=================================================="
+            echo "DEBUG: Checking for Android.mk before sourcing (main build step):"
+            ls -l frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: Android.mk NOT FOUND in main step!"
+            echo "Content of Android.mk:"
+            cat frameworks/base/services/core/xsd/vts/Android.mk || echo "CANNOT CAT Android.mk in main step!"
+            echo "Current working directory (main build step): $(pwd)"
+            echo "=================================================="
+            # --- END DEBUGGING ---
 
-            set +u
             source build/envsetup.sh
-            
-            # --- START NEW DEBUGGING ---
-            echo "=================================================="
-            echo "DEBUG: Checking for Android.mk before sourcing..."
-            ls -l frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: Android.mk NOT FOUND!"
-            echo " "
-            echo "DEBUG: Content of Android.mk:"
-            cat frameworks/base/services/core/xsd/vts/Android.mk || echo "DEBUG: CANNOT CAT Android.mk!"
-            echo " "
-            echo "DEBUG: End of check."
-            echo "=================================================="
-            # --- END NEW DEBUGGING ---
+            set +e # Temporarily disable exit on error for vendorsetup.sh
+            source vendor/twrp/build/envsetup.sh || true # Use || true to prevent job failure if this file isn't always present or errors
+            set -e # Re-enable exit on error
 
-            set +e
-            source vendor/twrp/build/envsetup.sh
-            set -e
-            
-            set -u
+            set -u # Re-enable unbound variable check
 
             export ALLOW_MISSING_DEPENDENCIES=true
             export OUT_DIR=$(pwd)/out
