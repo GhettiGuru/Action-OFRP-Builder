@@ -98,11 +98,12 @@ jobs:
           restore-keys: |
             ofrp-repo-
 
-      - name: Shallow Sync OrangeFox sources
+      - name: Sync OrangeFox sources and minimal manifest
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} --depth=1
-          repo sync -c --no-tags --no-clone-bundle -j$(nproc)
+         cd ${{ steps.pwd.outputs.workspace-folder }}
+         git clone ${{ github.event.inputs.SYNC_URL }} sync
+         cd sync
+         ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
 
       - name: Patch envsetup.sh for unbound variables
         run: |
