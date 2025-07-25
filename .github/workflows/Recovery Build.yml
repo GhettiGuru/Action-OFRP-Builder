@@ -88,7 +88,16 @@ jobs:
         run: |
           mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
           echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
-
+ 
+      - name: Restore OrangeFox manifest cache (repo only)
+        uses: actions/cache@v4
+        with:
+          path: |
+            workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ github.sha }}
+          restore-keys: |
+            ofrp-repo-
+            
       - name: Sync OrangeFox sources and minimal manifest
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
