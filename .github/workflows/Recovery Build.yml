@@ -110,10 +110,20 @@ jobs:
       - name: Delete repo cache archive to free disk space
         if: steps.restore-repo-cache.outputs.cache-hit == 'true'
         run: |
-         echo "Before deletion:"
-         du -sh /home/runner/work/_temp/* || true
-         find /home/runner/work/_temp -name '*.tzst' -exec rm -f {} +
-         echo "After deletion:"
+         echo "🔍 Looking for .tzst cache archives in /home/runner/work/_temp..."
+         ARCHIVES=$(find /home/runner/work/_temp -name '*.tzst')
+
+         if [ -z "$ARCHIVES" ]; then
+         echo "✅ No .tzst archive found — nothing to delete."
+         else
+         echo "🗑️ Found archive(s):"
+         echo "$ARCHIVES"
+         echo "Deleting..."
+         echo "$ARCHIVES" | xargs rm -f
+         echo "✅ Deleted archive(s) to free up disk space."
+         fi
+
+         echo "📦 Disk usage after deletion:"
          df -h /
 
       - name: Conditionally Sync OrangeFox Sources
@@ -136,108 +146,138 @@ jobs:
             repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
           fi
 
-      - name: Patch envsetup.sh for compatibility
+      - name: Patch envsetup.sh for compatibilityname: Recovery Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      SYNC_URL:
+        description: 'SYNC_URL'
+        required: true
+        default: 'https://gitlab.com/OrangeFox/sync.git'
+      MANIFEST_BRANCH:
+        description: 'MANIFEST_BRANCH'
+        required: true
+        default: '12.1'
+      DEVICE_TREE_URL:
+        description: 'DEVICE_TREE_URL'
+        required: true
+      DEVICE_TREE_BRANCH:
+        description: 'DEVICE_TREE_BRANCH'
+        required: true
+      DEVICE_PATH:
+        description: 'DEVICE_PATH'
+        required: true
+      LUNCH_COMBO:
+        description: 'LUNCH_COMBO'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout builder repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build
-          echo "🔧 Patching envsetup.sh"
-          dos2unix envsetup.sh || true
-          sed -i '/echo \[DEBUG\]/d' envsetup.sh || true
-          sed -i 's/\bversion\b/${version:-unknown}/g' envsetup.sh || true
-          sed -i 's/\bBUILD_VAR_CACHE_READY\b/${BUILD_VAR_CACHE_READY:-false}/g' envsetup.sh || true
+          sudo apt-get update
+          sudo apt-get install -y git aria2 python3 dos2unix
 
-      - name: Clone Device Tree
+      - name: Setup workspace
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+          mkdir -p workspace
+          echo "BUILD_TOP_PATH=$(pwd)/workspace" >> $GITHUB_ENV
 
-      - name: Clone Common Tree (if defined)
-        if: github.event.inputs.COMMON_TREE_URL != ''
-        run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
-
-      - name: Inject Debugging into envsetup.sh
-        run: |
-         set -x
-         BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
-
-         sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-         echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >&2; \
-         echo "DEBUG-INJECT: (build/envsetup.sh) CWD: $(pwd)" >&2; \
-         echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >&2; \
-         ls -l \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2; \
-         echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: $( [ -s \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
-         "$BUILD_TOP_PATH/build/envsetup.sh"
-
-          if [ -f "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh" ]; then
-          sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >&2; \
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: $(pwd)" >&2; \
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >&2; \
-          ls -l \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2; \
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: $( [ -s \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
-          "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh"
-         fi
-          
-      - name: Build Recovery Image
-        run: |
-          set -xeuo pipefail
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          
-          # Initialize build.log *before* sourcing to capture all output
-          # Important: Redirect ALL subsequent output of this step to build.log
-          # and also to stdout for GitHub Actions live log
-          exec > >(tee -a build.log) 2>&1
-          
-          echo "Starting recovery build process..."
-          
-          set +u # Temporarily disable unbound variable check
-          source build/envsetup.sh
-          source vendor/twrp/build/envsetup.sh || true
-          set -u # Re-enable unbound variable check
-          
-          export ALLOW_MISSING_DEPENDENCIES=true
-          export OUT_DIR=$(pwd)/out
-          export OUT=$OUT_DIR
-          
-          echo "Running lunch command: lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}"
-          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}
-          # Check the exit code of lunch. If it failed, exit the script.
-          if [ $? -ne 0 ]; then
-            echo "Lunch command failed!"
-            exit 1
-          fi
-          
-          echo "Environment variables after lunch:"
-          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT'
-          
-          echo "Starting make recoveryimage..."
-          make -j$(nproc) recoveryimage
-          # Check the exit code of make. If it failed, exit the script.
-          if [ $? -ne 0 ]; then
-            echo "Make recoveryimage failed!"
-            exit 1
-          fi
-          echo "Recovery image build completed."
-        continue-on-error: true # Keep this if you want subsequent steps to run even if build fails
-
-      - name: Save ccache
-        uses: actions/cache/save@v4
+      - name: Restore ccache
+        id: cache-ccache
+        uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ github.event.inputs.DEVICE_NAME }}-${{ github.sha }}
+          path: workspace/.ccache
+          key: ccache-${{ github.event.inputs.LUNCH_COMBO }}-${{ hashFiles('**/*.mk', '**/*.sh') }}
 
-      - name: Save OrangeFox .repo Cache (if new sync)
-        if: steps.cache-ofrp.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+      - name: Restore OrangeFox repo cache
+        id: cache-ofrp
+        uses: actions/cache@v4
         with:
           path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
+          key: ofrp-${{ github.event.inputs.MANIFEST_BRANCH }}-${{ hashFiles('.gitmodules') }}
 
-      - name: Upload build log
+      - name: Delete OrangeFox repo cache archive to free disk space
+        if: steps.cache-ofrp.outputs.cache-hit == 'true'
+        run: |
+          echo "Freeing space by deleting cache archive..."
+          find /home/runner/work/_temp -name 'cache.tzst' -exec rm -f {} +
+          echo "Archive deleted."
+
+      - name: Show available disk space before sync
+        run: df -h
+
+      - name: Sync OrangeFox source
+        run: |
+          cd workspace
+          if [ -d "fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo" ]; then
+            echo "🟢 .repo cache found - using orangefox_sync.sh"
+            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            git clone --depth=1 https://gitlab.com/OrangeFox/build/make.git -b fox_12.1 orangefox
+            bash orangefox/orangefox_sync.sh --branch=${{ github.event.inputs.MANIFEST_BRANCH }}
+          else
+            echo "🔴 .repo cache NOT found - performing full repo init/sync"
+            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} --depth=1
+            repo sync -c --force-sync --no-clone-bundle --no-tags -j$(nproc --all)
+          fi
+
+      - name: Show .repo folder size
+        run: du -sh workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo || echo "Repo folder not found"
+
+      - name: Inject debug logging into envsetup scripts
+        run: |
+          python3 .github/scripts/inject_debug.py
+
+      - name: Setup ccache environment
+        run: |
+          echo "CCACHE_DIR=$(pwd)/workspace/.ccache" >> $GITHUB_ENV
+          echo "USE_CCACHE=1" >> $GITHUB_ENV
+          echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
+          ccache -o compression=true
+          ccache -z
+
+      - name: Clone device tree
+        run: |
+          cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          git clone --depth=1 ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ${{ github.event.inputs.DEVICE_PATH }}
+
+      - name: Start build
+        run: |
+          set -xeuo pipefail
+          cd workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          touch build.log
+          echo 'TARGET_PLATFORM_VERSION := SP2A.220305.012' | tee -a build.log
+          set +u
+          source build/envsetup.sh
+          source vendor/twrp/build/envsetup.sh || true
+          lunch ${{ github.event.inputs.LUNCH_COMBO }}
+          mka recoveryimage 2>&1 | tee -a build.log
+
+        continue-on-error: true
+
+      - name: Show ccache summary
+        run: ccache -s
+
+      - name: Upload recovery image
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
+          name: recovery.img
+          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/*/recovery.img
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build.log
           path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
 
       - name: Upload Build Output
