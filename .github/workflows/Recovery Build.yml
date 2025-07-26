@@ -172,37 +172,47 @@ jobs:
           
       - name: Build Recovery Image
         run: |
-          set -xeuo pipefail # Keep these here for general robust shell execution
+          set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          
           echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> "${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk"
           
           # Initialize build.log *before* sourcing to capture all output
-          touch build.log
+          # Important: Redirect ALL subsequent output of this step to build.log
+          # and also to stdout for GitHub Actions live log
+          exec > >(tee -a build.log) 2>&1
           
-          # Source envsetup.sh and vendorsetup.sh directly in this shell
-          # to make 'lunch' and other functions available.
-          # Redirect stderr to stdout and then tee to capture all output.
-          {
-            set +u # Temporarily disable unbound variable check
-            source build/envsetup.sh
-            # The vendosetup.sh might not always exist or might error, so use || true
-            source vendor/twrp/build/envsetup.sh || true 
-            set -u # Re-enable unbound variable check
-          } 2>&1 | tee -a build.log # Capture all output from sourcing
+          echo "Starting recovery build process..."
+          
+          set +u # Temporarily disable unbound variable check
+          source build/envsetup.sh
+          source vendor/twrp/build/envsetup.sh || true
+          set -u # Re-enable unbound variable check
           
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
           
-          echo "Running lunch..." | tee -a build.log # Log this to file as well
-          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} | tee -a build.log || { echo "Lunch failed!"; exit 1; }
+          echo "Running lunch command: lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}"
+          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}
+          # Check the exit code of lunch. If it failed, exit the script.
+          if [ $? -ne 0 ]; then
+            echo "Lunch command failed!"
+            exit 1
+          fi
           
-          echo "TARGET_PRODUCT=$TARGET_PRODUCT" | tee -a build.log
-          echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT" | tee -a build.log
-          echo "TARGET_DEVICE=$TARGET_DEVICE" | tee -a build.log
+          echo "Environment variables after lunch:"
+          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT'
           
-          make -j$(nproc) recoveryimage 2>&1 | tee -a build.log # Capture make output
-        continue-on-error: true
+          echo "Starting make recoveryimage..."
+          make -j$(nproc) recoveryimage
+          # Check the exit code of make. If it failed, exit the script.
+          if [ $? -ne 0 ]; then
+            echo "Make recoveryimage failed!"
+            exit 1
+          fi
+          echo "Recovery image build completed."
+        continue-on-error: true # Keep this if you want subsequent steps to run even if build fails
 
       - name: Save ccache
         uses: actions/cache/save@v4
