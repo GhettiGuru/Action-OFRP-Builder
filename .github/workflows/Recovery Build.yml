@@ -112,7 +112,7 @@ jobs:
         run: |
           export CCACHE_DIR=${{ github.workspace }}/.ccache
           mkdir -p "$CCACHE_DIR"
-          ccache --max-size=5G
+          ccache --max-size=3G
           echo "CCACHE_DIR=$CCACHE_DIR" >> $GITHUB_ENV
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
