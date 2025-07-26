@@ -1,5 +1,4 @@
-name: OrangeFox Recovery Build
-
+name: OrangeFox AOSP BUILD
 on:
   workflow_dispatch:
     inputs:
@@ -29,22 +28,23 @@ on:
       COMMON_PATH:
         description: 'COMMON_PATH (optional)'
         required: false
-      DEVICE_NAME:
-        description: 'DEVICE_NAME'
+      # Removed DEVICE_NAME from inputs to comply with the 10-input limit
+      MAKEFILE_NAME: # Input #8
+        description: 'MAKEFILE_NAME (e.g., twrp_nx729j or aosp_arm64)'
         required: true
         default: 'twrp_nx729j'
-      MAKEFILE_NAME:
-        description: 'MAKEFILE_NAME'
-        required: true
-        default: 'twrp_nx729j'
-      BUILD_VARIANT:
+      BUILD_VARIANT: # Input #9
         description: 'Build variant (eng or userdebug)'
         required: true
         default: 'eng'
+      BUILD_TARGET: # Input #10 - Added for main workflow compatibility
+        description: 'BUILD_TARGET (e.g., recovery, boot, vendor_boot)'
+        required: true
+        default: 'recovery'
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04 # CHANGED TO UBUNTU 24.04
     env:
       OF_VERSION: R12.1
       SYNC_URL: ${{ github.event.inputs.SYNC_URL }}
@@ -54,56 +54,65 @@ jobs:
       DEVICE_PATH: ${{ github.event.inputs.DEVICE_PATH }}
       COMMON_TREE_URL: ${{ github.event.inputs.COMMON_TREE_URL }}
       COMMON_PATH: ${{ github.event.inputs.COMMON_PATH }}
-      DEVICE_NAME: ${{ github.event.inputs.DEVICE_NAME }}
+      # DEVICE_NAME will be derived from MAKEFILE_NAME
       MAKEFILE_NAME: ${{ github.event.inputs.MAKEFILE_NAME }}
       BUILD_VARIANT: ${{ github.event.inputs.BUILD_VARIANT }}
+      BUILD_TARGET: ${{ github.event.inputs.BUILD_TARGET }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Clean Preinstalled Tools
+      # REMOVED: Original Clean Preinstalled Tools
+      # REMOVED: Original Install Build Dependencies
+
+      - name: Initialize workspace
+        id: pwd
         run: |
-          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
-      - name: Install Build Dependencies
+          mkdir workspace
+          cd workspace
+          echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
+          
+      - name: Derive DEVICE_NAME from MAKEFILE_NAME
         run: |
-          sudo apt update && sudo apt full-upgrade -y && sudo apt install -y \
-            bc bison build-essential ccache curl flex g++-multilib \
-            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
-            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
-            libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 \
-            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk \
-            aria2 repo gh git dos2unix
-      - name: Set up Java 11
+          DERIVED_DEVICE_NAME=$(echo "${{ env.MAKEFILE_NAME }}" | sed 's/^twrp_//')
+          echo "Derived DEVICE_NAME: $DERIVED_DEVICE_NAME"
+          echo "DEVICE_NAME=$DERIVED_DEVICE_NAME" >> $GITHUB_ENV
+
+      - name: Prepare the build environment # NEW/REVISED COMPREHENSIVE STEP
+        run: |
+          sudo apt update && sudo apt upgrade -y
+          DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
+              linux-modules-extra-$(uname -r) \
+              git python3 tar aria2
+          git clone https://gitlab.com/OrangeFox/misc/scripts
+          cd scripts
+          sudo bash setup/android_build_env.sh
+          sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh
+          sudo bash setup/install_android_sdk.sh
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+
+      - name: Set up Java 11 # Retained and correctly positioned
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 11
-
-      - name: Set Up Workspace
-        id: pwd
-        run: |
-          mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
-          
+      
       - name: Restore OrangeFox .repo Cache
         id: cache-ofrp
         uses: actions/cache@v4
         with:
-          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
+          path: workspace/fox_${{ env.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ env.MANIFEST_BRANCH }}
           restore-keys: |
             ofrp-repo-
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ github.event.inputs.DEVICE_NAME }}-${{ github.sha }}
+          key: ccache-${{ env.DEVICE_NAME }}-${{ github.sha }}
           restore-keys: |
-            ccache-${{ github.event.inputs.DEVICE_NAME }}-
+            ccache-${{ env.DEVICE_NAME }}-
       - name: Configure ccache
         run: |
           export CCACHE_DIR=${{ github.workspace }}/.ccache
@@ -112,15 +121,12 @@ jobs:
           echo "CCACHE_DIR=$CCACHE_DIR" >> $GITHUB_ENV
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
-      - name: Check & Free Disk Space (separate step for visibility)
-        # This step now stands alone to ensure its output is directly visible in the UI
+      - name: Check & Free Disk Space
         run: |
           echo "📦 Disk usage BEFORE cleanup:"
           df -h /
           echo ""
           echo "🔍 Searching for .tzst repo cache archives in /home/runner/work/_temp..."
-          # The actions/cache typically deletes its own archives after restore.
-          # This is a defensive check for any remaining ones.
           ARCHIVES=$(find /home/runner/work/_temp -type f -name '*.tzst')
           if [ -z "$ARCHIVES" ]; then
             echo "✅ No .tzst repo cache archive found by this script — nothing to delete."
@@ -137,56 +143,67 @@ jobs:
       - name: Conditionally Sync OrangeFox Sources
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
-          if [ -f fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifest.xml ]; then
+          if [ -f fox_${{ env.MANIFEST_BRANCH }}/.repo/manifest.xml ]; then
             echo "🟢 .repo cache found - using orangefox_sync.sh for resync"
-            git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
+            git clone --depth=1 ${{ env.SYNC_URL }} sync
             cd sync
-            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ../fox_${{ env.MANIFEST_BRANCH }}
           else
             echo "🔴 .repo cache NOT found - full repo init/sync"
-            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} || {
+            mkdir -p fox_${{ env.MANIFEST_BRANCH }}
+            cd fox_${{ env.MANIFEST_BRANCH }}
+            repo init -u ${{ env.SYNC_URL }} -b ${{ env.MANIFEST_BRANCH }} || {
               echo "❌ Repo init failed - branch may not exist"
               exit 1
             }
             repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
           fi
-      - name: Debug envsetup.sh around line 722
+
+      - name: Clone device tree
         run: |
-          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
-          echo "Content of $BUILD_TOP_PATH/build/envsetup.sh around line 722:"
-          # Print lines 710 to 730 to get enough context
-          sed -n '710,730p' "$BUILD_TOP_PATH/build/envsetup.sh"
-          echo "--- End of envsetup.sh snippet ---"
-        continue-on-error: true # Allow the workflow to continue even if this fails for some reason
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
+          git clone ${{ env.DEVICE_TREE_URL }} -b ${{ env.DEVICE_TREE_BRANCH }} ./${{ env.DEVICE_PATH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+
       - name: Clone common tree (if provided)
         if: ${{ env.COMMON_TREE_URL != '' && env.COMMON_PATH != '' }}
         run: |
-          git clone --depth=1 $COMMON_TREE_URL workspace/fox_${MANIFEST_BRANCH}/$COMMON_PATH
-      - name: Setup lunch combo
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
+          git clone ${{ env.COMMON_TREE_URL }} -b ${{ env.DEVICE_TREE_BRANCH }} ./${{ env.COMMON_PATH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+
+      - name: Debug envsetup.sh around line 722
         run: |
-          echo "LUNCH_COMBO=${DEVICE_NAME}-${BUILD_VARIANT}" >> $GITHUB_ENV
+          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
+          echo "Content of $BUILD_TOP_PATH/build/envsetup.sh around line 722:"
+          sed -n '710,730p' "$BUILD_TOP_PATH/build/envsetup.sh"
+          echo "--- End of envsetup.sh snippet ---"
+        continue-on-error: true
+
       - name: Patch envsetup.sh for compatibility
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/build
           echo "🔧 Patching envsetup.sh"
           dos2unix envsetup.sh || true
           sed -i '/echo \[DEBUG\]/d' envsetup.sh || true
-          # REMOVE or COMMENT OUT THE FOLLOWING LINE. This is likely the cause of the PLATFORM_VERSION issue.
-          # sed -i 's/\bversion\b/${version:-unknown}/g' envsetup.sh || true
           sed -i 's/\bBUILD_VAR_CACHE_READY\b/${BUILD_VAR_CACHE_READY:-false}/g' envsetup.sh || true
+          
+          # --- PATCH FOR 'version: unbound variable' (consolidated here) ---
+          echo "Applying 'version=${variant}' patch to build/envsetup.sh..."
+          sed -i '/^        fi$/a\        version=${variant}' envsetup.sh
+          # --- END PATCH ---
+
       - name: Inject Debugging into envsetup.sh
         run: |
-         set -x
-         BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
-         sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-         echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >&2; \
-         echo "DEBUG-INJECT: (build/envsetup.sh) CWD: $(pwd)" >&2; \
-         echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >&2; \
-         ls -l \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2; \
-         echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: $( [ -s \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
-         "$BUILD_TOP_PATH/build/envsetup.sh"
+          set -x
+          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
+          sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
+          echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >&2; \
+          echo "DEBUG-INJECT: (build/envsetup.sh) CWD: $(pwd)" >&2; \
+          echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >&2; \
+          ls -l \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2; \
+          echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: $( [ -s \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
+          "$BUILD_TOP_PATH/build/envsetup.sh"
           if [ -f "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh" ]; then
           sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
           echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >&2; \
@@ -195,59 +212,98 @@ jobs:
           ls -l \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2; \
           echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: $( [ -s \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
           "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh"
-         fi
-      - name: Build Recovery Image (AOSP Arm64 Test)
+          fi
+
+      - name: Building Recovery (Main Device Build)
+        if: ${{ env.MAKEFILE_NAME != 'aosp_arm64' }} # Only run if not the AOSP test build
         run: |
-          set -xeuo pipefail # Apply to the entire script. Keep it at the top.
-          # Navigate to the workspace first
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          # Initialize build.log before redirecting output
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
+          
           touch build.log
-          # Redirect all subsequent output of this step to build.log and stdout for GitHub Actions live log
           exec > >(tee -a build.log) 2>&1
-          echo "Starting recovery build process for AOSP arm64-eng test..."
-          # Export the desired platform version. As determined by the specific OrangeFox envsetup.mk,
-          # it seems to want just 'SP2A' as the full version string.
-          export PLATFORM_VERSION=SP2A 
-          set +u # Temporarily disable unbound variable check as sourcing might refer to unset variables
+
+          echo "Starting recovery build process for main device (${{ env.DEVICE_NAME }})..."
+
+          set +e
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
-          set -u # Re-enable unbound variable check
+          set -e
+
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
-          # These exports are necessary to resolve unbound variables in OrangeFox's envsetup.sh
-          # and ensure expected values are present for 'make'.
-          export TARGET_BUILD_TYPE=release # Typically 'release' for eng builds in recoveries, but depends on tree.
-          export TARGET_PLATFORM_VERSION="${PLATFORM_VERSION}" 
-          # Explicitly setting 'version' to 'eng' to pass it to scripts that might use a local 'version' variable.
-          export version="eng" 
-          echo "Running lunch command: lunch aosp_arm64-eng"
-          lunch aosp_arm64-eng # <-- THE KEY CHANGE FOR YOUR TEST
-          # Check the exit code of lunch. If it failed, exit the script.
+
+          echo "Running lunch command: lunch ${{ env.MAKEFILE_NAME }}-${{ env.BUILD_VARIANT }}"
+          lunch ${{ env.MAKEFILE_NAME }}-${{ env.BUILD_VARIANT }}
+
           if [ $? -ne 0 ]; then
             echo "Lunch command failed!"
             exit 1
           fi
+
           echo "Environment variables after lunch:"
-          # Note: TARGET_PRODUCT and TARGET_BUILD_VARIANT should now reflect 'aosp_arm64' and 'eng'
+          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT|TARGET_PLATFORM_VERSION|TARGET_BUILD_TYPE|version|DEVICE_NAME' 
+
+          echo "Starting make clean && mka adbd ${BUILD_TARGET}image..."
+          make clean && mka adbd ${{ env.BUILD_TARGET }}image -j$(nproc --all)
+
+          if [ $? -ne 0 ]; then
+            echo "Make failed!"
+            exit 1
+          fi
+          echo "Recovery image build completed for main device."
+        continue-on-error: true
+
+      - name: Building Recovery (AOSP Arm64 Test)
+        if: ${{ env.MAKEFILE_NAME == 'aosp_arm64' }} # Only run if it's the AOSP test build
+        run: |
+          set -xeuo pipefail
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
+          touch build.log
+          exec > >(tee -a build.log) 2>&1
+          echo "Starting recovery build process for AOSP arm64-eng test..."
+
+          set +u
+          source build/envsetup.sh
+          source vendor/twrp/build/envsetup.sh || true
+          set -u
+
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export OUT_DIR=$(pwd)/out
+          export OUT=$OUT_DIR
+
+          echo "Running lunch command: lunch aosp_arm64-eng"
+          lunch aosp_arm64-eng
+
+          if [ $? -ne 0 ]; then
+            echo "Lunch command failed!"
+            exit 1
+          fi
+
+          echo "Environment variables after lunch:"
           env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT|TARGET_PLATFORM_VERSION|TARGET_BUILD_TYPE|version' 
+
           echo "Starting make recoveryimage..."
           make -j$(nproc) recoveryimage
-          # Check the exit code of make. If it failed, exit the script.
           if [ $? -ne 0 ]; then
             echo "Make recoveryimage failed!"
             exit 1
           fi
-          echo "Recovery image build completed."
-        continue-on-error: true # Keep this to see full logs if it fails
-        
+          echo "Recovery image build completed for AOSP test."
+        continue-on-error: true
+
+      - name: Check the output directory before uploading
+        run: |
+          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/
+          echo
+          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/
+
       - name: Upload recovery image
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: OrangeFox-Recovery-${{ env.DEVICE_NAME }}
-          path: workspace/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/*/recovery.img
+          path: workspace/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/*/recovery.img 
 
       - name: Upload build log
         if: always()
@@ -255,7 +311,6 @@ jobs:
         with:
           name: Build-Log-${{ env.DEVICE_NAME }}
           path: workspace/fox_${{ env.MANIFEST_BRANCH }}/build.log
-
       - name: Show ccache stats
         if: always()
         run: |
@@ -273,6 +328,7 @@ jobs:
           body: |
             Manifest: ${{ env.MANIFEST_BRANCH }}
             Device: ${{ env.DEVICE_NAME }}
+            Target: ${{ env.BUILD_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -287,10 +343,11 @@ jobs:
                 ['Key', 'Value'],
                 ['Device', process.env.DEVICE_NAME],
                 ['Branch', process.env.MANIFEST_BRANCH],
+                ['Target', process.env.BUILD_TARGET],
                 ['Success', '${{ job.status }}'],
               ])
               .addLink('🔗 Download Artifacts', `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`)
               .write()
       - name: ✅ Done
         if: always()
-        run: echo "Build process completed (success or fail). Check artifacts above".
+        run: echo "Build process completed (success or fail). Check artifacts above."
