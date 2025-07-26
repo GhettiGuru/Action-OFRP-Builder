@@ -1,4 +1,4 @@
-name: Recovery Build
+name: OrangeFox Recovery Build
 
 on:
   workflow_dispatch:
@@ -44,205 +44,143 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
+    runs-on: ubuntu-latest
+    env:
+      OF_VERSION: R12.1
+      SYNC_URL: ${{ github.event.inputs.SYNC_URL }}
+      MANIFEST_BRANCH: ${{ github.event.inputs.MANIFEST_BRANCH }}
+      DEVICE_TREE_URL: ${{ github.event.inputs.DEVICE_TREE_URL }}
+      DEVICE_TREE_BRANCH: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}
+      DEVICE_PATH: ${{ github.event.inputs.DEVICE_PATH }}
+      COMMON_TREE_URL: ${{ github.event.inputs.COMMON_TREE_URL }}
+      COMMON_PATH: ${{ github.event.inputs.COMMON_PATH }}
+      DEVICE_NAME: ${{ github.event.inputs.DEVICE_NAME }}
+      MAKEFILE_NAME: ${{ github.event.inputs.MAKEFILE_NAME }}
+      BUILD_VARIANT: ${{ github.event.inputs.BUILD_VARIANT }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Clean Preinstalled Tools
+      - name: Install dependencies
         run: |
-          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf libncurses5-dev \
+            libssl-dev libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            python2 python-is-python3 ccache
 
-      - name: Install Build Dependencies
-        run: |
-          sudo apt update && sudo apt full-upgrade -y && sudo apt install -y \
-            bc bison build-essential ccache curl flex g++-multilib \
-            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
-            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
-            libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 \
-            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk \
-            aria2 repo gh git dos2unix
-
-      - name: Set up Java 11
-        uses: actions/setup-java@v4
+      - name: Setup ccache
+        uses: actions/cache@v4
         with:
-          distribution: temurin
-          java-version: 11
+          path: ~/.ccache
+          key: ofrp-ccache-${{ github.run_id }}
+          restore-keys: |
+            ofrp-ccache-
 
-      - name: Set Up Workspace
-        id: pwd
+      - name: Setup build environment
         run: |
-          mkdir -p workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
+          mkdir -p workspace
+          cd workspace
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
       - name: Restore OrangeFox .repo Cache
         id: cache-ofrp
         uses: actions/cache@v4
         with:
-          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ github.event.inputs.MANIFEST_BRANCH }}
+          path: workspace/fox_${{ env.MANIFEST_BRANCH }}/.repo
+          key: ofrp-repo-${{ env.MANIFEST_BRANCH }}
           restore-keys: |
             ofrp-repo-
 
       - name: Delete repo cache archive to free disk space
         if: steps.cache-ofrp.outputs.cache-hit == 'true'
         run: |
-          echo "🔍 Searching for .tzst cache archives to delete..."
-          ARCHIVES=$(find /home/runner/work/_temp -name '*.tzst')
-          if [ -z "$ARCHIVES" ]; then
-            echo "✅ No .tzst archive found — nothing to delete."
-          else
-            echo "🗑️ Found archive(s):"
-            echo "$ARCHIVES"
-            echo "$ARCHIVES" | xargs rm -f
-            echo "✅ Deleted archive(s) to free up disk space."
-          fi
-          echo "📦 Disk usage after cleanup:"
+          echo "📦 Disk usage BEFORE cleanup:"
           df -h /
 
-      - name: Restore ccache
-        id: cache-ccache
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ github.event.inputs.DEVICE_NAME }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ github.event.inputs.DEVICE_NAME }}-
+          echo ""
+          echo "🔍 Searching for .tzst repo cache archives in /home/runner/work/_temp..."
+          ARCHIVES=$(find /home/runner/work/_temp -type f -name '*.tzst')
 
-      - name: Configure ccache
-        run: |
-          export CCACHE_DIR=${{ github.workspace }}/.ccache
-          mkdir -p "$CCACHE_DIR"
-          ccache --max-size=5G
-          echo "CCACHE_DIR=$CCACHE_DIR" >> $GITHUB_ENV
-          echo "USE_CCACHE=1" >> $GITHUB_ENV
-          echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
-
-      - name: Set LUNCH_COMBO environment variable
-        run: echo "LUNCH_COMBO=${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}" >> $GITHUB_ENV
-
-      - name: Conditionally Sync OrangeFox Sources
-        run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}
-
-          if [ -f fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifest.xml ]; then
-            echo "🟢 .repo cache found - using orangefox_sync.sh for resync"
-            git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
-            cd sync
-            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          if [ -z "$ARCHIVES" ]; then
+            echo "✅ No .tzst repo cache archive found — nothing to delete."
           else
-            echo "🔴 .repo cache NOT found - full repo init/sync"
-            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} --depth=1
-            repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
+            echo "🗑️ Found the following archive(s) to delete:"
+            echo "$ARCHIVES"
+            echo ""
+            echo "$ARCHIVES" | xargs rm -f
+            echo "✅ Deleted repo cache archive(s)."
           fi
 
-      - name: Show .repo folder size
-        run: du -sh workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo || echo "Repo folder not found"
+          echo ""
+          echo "📦 Disk usage AFTER cleanup:"
+          df -h /
 
-      - name: Clone Device Tree
+      - name: Sync source
+        working-directory: workspace
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+          repo init -u $SYNC_URL -b $MANIFEST_BRANCH --depth=1
+          repo sync -c --force-sync --no-tags --no-clone-bundle -j$(nproc --all)
 
-      - name: Clone Common Tree (if defined)
-        if: github.event.inputs.COMMON_TREE_URL != ''
+      - name: Clone device tree
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
+          git clone --depth=1 -b $DEVICE_TREE_BRANCH $DEVICE_TREE_URL workspace/fox_${MANIFEST_BRANCH}/$DEVICE_PATH
 
-      - name: Patch envsetup.sh for compatibility
+      - name: Clone common tree (if provided)
+        if: ${{ env.COMMON_TREE_URL != '' && env.COMMON_PATH != '' }}
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build
-          echo "🔧 Patching envsetup.sh"
-          dos2unix envsetup.sh || true
-          sed -i '/echo \[DEBUG\]/d' envsetup.sh || true
-          sed -i 's/\bversion\b/${version:-unknown}/g' envsetup.sh || true
-          sed -i 's/\bBUILD_VAR_CACHE_READY\b/${BUILD_VAR_CACHE_READY:-false}/g' envsetup.sh || true
+          git clone --depth=1 $COMMON_TREE_URL workspace/fox_${MANIFEST_BRANCH}/$COMMON_PATH
 
-      - name: Inject Debugging into envsetup.sh
+      - name: Setup lunch combo
         run: |
-          set -x
-          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
+          echo "LUNCH_COMBO=${DEVICE_NAME}-${BUILD_VARIANT}" >> $GITHUB_ENV
 
-          sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-          echo "DEBUG-INJECT: Checking Android.mk:" >&2; \
-          echo "DEBUG-INJECT: CWD: $(pwd)" >&2; \
-          ls -l \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Not found!" >&2; \
-          echo "DEBUG-INJECT: Result: $( [ -s \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
-          "$BUILD_TOP_PATH/build/envsetup.sh"
+      - name: Patch envsetup.sh to debug OrangeFox lunch
+        run: |
+          sed -i '/function add_lunch_combo/a echo "🍊 add_lunch_combo: $1"' workspace/fox_${MANIFEST_BRANCH}/build/envsetup.sh
 
-          if [ -f "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh" ]; then
-            sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-            echo "DEBUG-INJECT: Checking Android.mk (vendor):" >&2; \
-            echo "DEBUG-INJECT: CWD: $(pwd)" >&2; \
-            ls -l \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Not found!" >&2; \
-            echo "DEBUG-INJECT: Result: $( [ -s \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
-            "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh"
-          fi
-
-      - name: Build Recovery Image
+      - name: Start build
+        working-directory: workspace/fox_${{ env.MANIFEST_BRANCH }}
         run: |
           set -xeuo pipefail
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-
-          exec > >(tee -a build.log) 2>&1
-
-          echo "Starting recovery build..."
-          set +u
+          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" > build.log
           source build/envsetup.sh
-          source vendor/twrp/build/envsetup.sh || true
-          set -u
-
-          export ALLOW_MISSING_DEPENDENCIES=true
-          export OUT_DIR=$(pwd)/out
-          export OUT=$OUT_DIR
-
-          echo "Lunch: $LUNCH_COMBO"
-          lunch $LUNCH_COMBO || exit 1
-
-          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT'
-
-          echo "Running make recoveryimage..."
-          make -j$(nproc) recoveryimage || exit 1
-
-          echo "✅ Recovery build completed."
-        continue-on-error: true
-
-      - name: Show ccache summary
-        run: ccache -s
+          lunch $LUNCH_COMBO
+          make -j$(nproc --all) recoveryimage 2>&1 | tee -a build.log
 
       - name: Upload recovery image
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrangeFox-Recovery-${{ env.DEVICE_NAME }}
+          path: workspace/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/*/recovery.img
+
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: recovery.img
-          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/*/recovery.img
+          name: Build-Log-${{ env.DEVICE_NAME }}
+          path: workspace/fox_${{ env.MANIFEST_BRANCH }}/build.log
 
-      - name: Upload build log
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/build.log
+      - name: Show ccache stats
+        if: always()
+        run: |
+          echo "📦 ccache summary:"
+          ccache -s || echo "⚠️ ccache not installed or failed"
 
-      - name: Upload Build Output
+      - name: Upload to GitHub Release
+        if: success()
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.img
-            ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
-          name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
+            workspace/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/*.img
+            workspace/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/*.zip
+          name: ${{ env.DEVICE_NAME }}-${{ github.run_id }}
           tag_name: ${{ github.run_id }}
           body: |
-            Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
-            Device: ${{ github.event.inputs.DEVICE_NAME }}
+            Manifest: ${{ env.MANIFEST_BRANCH }}
+            Device: ${{ env.DEVICE_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -259,7 +197,7 @@ jobs:
                 ['Branch', process.env.MANIFEST_BRANCH],
                 ['Success', '${{ job.status }}'],
               ])
-              .addLink('🔗 Download Artifacts', '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}')
+              .addLink('🔗 Download Artifacts', `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`)
               .write()
 
       - name: ✅ Done
