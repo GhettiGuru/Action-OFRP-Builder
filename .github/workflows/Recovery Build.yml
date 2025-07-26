@@ -90,6 +90,22 @@ jobs:
           restore-keys: |
             ofrp-repo-
 
+      - name: Delete repo cache archive to free disk space
+        if: steps.cache-ofrp.outputs.cache-hit == 'true'
+        run: |
+          echo "🔍 Searching for .tzst cache archives to delete..."
+          ARCHIVES=$(find /home/runner/work/_temp -name '*.tzst')
+          if [ -z "$ARCHIVES" ]; then
+            echo "✅ No .tzst archive found — nothing to delete."
+          else
+            echo "🗑️ Found archive(s):"
+            echo "$ARCHIVES"
+            echo "$ARCHIVES" | xargs rm -f
+            echo "✅ Deleted archive(s) to free up disk space."
+          fi
+          echo "📦 Disk usage after cleanup:"
+          df -h /
+
       - name: Restore ccache
         id: cache-ccache
         uses: actions/cache@v4
@@ -127,24 +143,6 @@ jobs:
             repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} --depth=1
             repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
           fi
-
-      - name: Delete repo cache archive to free disk space
-        if: steps.cache-ofrp.outputs.cache-hit == 'true'
-        run: |
-          echo "🔍 Searching for .tzst cache archives to delete..."
-          ARCHIVES=$(find /home/runner/work/_temp -name '*.tzst')
-
-          if [ -z "$ARCHIVES" ]; then
-            echo "✅ No .tzst archive found — nothing to delete."
-          else
-            echo "🗑️ Found archive(s):"
-            echo "$ARCHIVES"
-            echo "$ARCHIVES" | xargs rm -f
-            echo "✅ Deleted archive(s) to free up disk space."
-          fi
-
-          echo "📦 Disk usage after cleanup:"
-          df -h /
 
       - name: Show .repo folder size
         run: du -sh workspace/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo || echo "Repo folder not found"
