@@ -46,7 +46,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      OF_VERSION: R12.1
+      OF_VERSION:  12.1
       SYNC_URL: ${{ github.event.inputs.SYNC_URL }}
       MANIFEST_BRANCH: ${{ github.event.inputs.MANIFEST_BRANCH }}
       DEVICE_TREE_URL: ${{ github.event.inputs.DEVICE_TREE_URL }}
