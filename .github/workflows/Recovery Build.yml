@@ -162,11 +162,15 @@ jobs:
             }
             repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
           fi
-          
-      - name: Clone device tree
-        run: |
-          git clone --depth=1 -b $DEVICE_TREE_BRANCH $DEVICE_TREE_URL workspace/fox_${MANIFEST_BRANCH}/$DEVICE_PATH
 
+      - name: Debug envsetup.sh around line 722
+        run: |
+          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
+          echo "Content of $BUILD_TOP_PATH/build/envsetup.sh around line 722:"
+          # Print lines 710 to 730 to get enough context
+          sed -n '710,730p' "$BUILD_TOP_PATH/build/envsetup.sh"
+          echo "--- End of envsetup.sh snippet ---"
+        continue-on-error: true # Allow the workflow to continue even if this fails for some reason
       - name: Clone common tree (if provided)
         if: ${{ env.COMMON_TREE_URL != '' && env.COMMON_PATH != '' }}
         run: |
