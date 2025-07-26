@@ -146,9 +146,9 @@ jobs:
             repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
           fi
 
-      - name: Patch envsetup.sh for compatibilityname: Recovery Build
+      - name: Patch envsetup.sh for compatibility
 
-on:
+        on:
   workflow_dispatch:
     inputs:
       SYNC_URL:
@@ -172,8 +172,8 @@ on:
         description: 'LUNCH_COMBO'
         required: true
 
-jobs:
-  build:
+      jobs:
+      build:
     runs-on: ubuntu-latest
 
     steps:
