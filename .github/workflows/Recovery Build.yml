@@ -149,14 +149,13 @@ jobs:
             ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           else
             echo "🔴 .repo cache NOT found - full repo init/sync"
-            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} || {
-              echo "❌ Repo init failed - branch may not exist"
-              exit 1
-            }
-            repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
-          fi
+            run: |
+             cd ${{ steps.pwd.outputs.workspace-folder }}
+             git clone ${{ github.event.inputs.SYNC_URL }}
+             cd sync
+             ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+             working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+             fi
       
       - name: Clone device tree
         run: |
