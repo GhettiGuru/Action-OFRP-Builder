@@ -175,8 +175,6 @@ jobs:
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           
-          echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> "${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk"
-          
           # Initialize build.log *before* sourcing to capture all output
           # Important: Redirect ALL subsequent output of this step to build.log
           # and also to stdout for GitHub Actions live log
