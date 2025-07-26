@@ -147,34 +147,29 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
 
-            - name: Inject Debugging into envsetup.sh
-              run: |
-              set -x
-              BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
+      - name: Inject Debugging into envsetup.sh
+        run: |
+         set -x
+         BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}"
 
-             sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-          $(cat <<EOF
-          echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >&2
-          echo "DEBUG-INJECT: (build/envsetup.sh) CWD: \$(pwd)" >&2
-          echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >&2
-          ls -l \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2
-          echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: \$( [ -s \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2
-          EOF
-          )' "$BUILD_TOP_PATH/build/envsetup.sh"
+         sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
+         echo "DEBUG-INJECT: (build/envsetup.sh) Checking Android.mk:" >&2; \
+         echo "DEBUG-INJECT: (build/envsetup.sh) CWD: $(pwd)" >&2; \
+         echo "DEBUG-INJECT: (build/envsetup.sh) Path being checked: \$T/frameworks/base/services/core/xsd/vts/Android.mk" >&2; \
+         ls -l \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2; \
+         echo "DEBUG-INJECT: (build/envsetup.sh) Result of -s check: $( [ -s \"\$T/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
+         "$BUILD_TOP_PATH/build/envsetup.sh"
 
           if [ -f "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh" ]; then
-            sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-          $(cat <<EOF
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >&2
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: \$(pwd)" >&2
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >&2
-          ls -l \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2
-          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: \$( [ -s \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2
-          EOF
-          )' "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh"
-          fi
-
-
+          sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
+          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Checking Android.mk:" >&2; \
+          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) CWD: $(pwd)" >&2; \
+          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Path being checked: \$TOP/frameworks/base/services/core/xsd/vts/Android.mk" >&2; \
+          ls -l \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" >&2 || echo "Android.mk not found!" >&2; \
+          echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: $( [ -s \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
+          "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh"
+         fi
+          
       - name: Build Recovery Image
         run: |
           set -xeuo pipefail
