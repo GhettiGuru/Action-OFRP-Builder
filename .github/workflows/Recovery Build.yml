@@ -117,18 +117,20 @@ jobs:
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
 
-      - name: Delete repo cache archive to free disk space
-        if: steps.cache-ofrp.outputs.cache-hit == 'true'
+      - name: Check & Free Disk Space (separate step for visibility)
+        # This step now stands alone to ensure its output is directly visible in the UI
         run: |
           echo "📦 Disk usage BEFORE cleanup:"
           df -h /
 
           echo ""
           echo "🔍 Searching for .tzst repo cache archives in /home/runner/work/_temp..."
+          # The actions/cache typically deletes its own archives after restore.
+          # This is a defensive check for any remaining ones.
           ARCHIVES=$(find /home/runner/work/_temp -type f -name '*.tzst')
 
           if [ -z "$ARCHIVES" ]; then
-            echo "✅ No .tzst repo cache archive found — nothing to delete."
+            echo "✅ No .tzst repo cache archive found by this script — nothing to delete."
           else
             echo "🗑️ Found the following archive(s) to delete:"
             echo "$ARCHIVES"
@@ -138,7 +140,7 @@ jobs:
           fi
 
           echo ""
-          echo "📦 Disk usage AFTER cleanup:"
+          echo "📦 Disk usage AFTER cleanup (by this step):"
           df -h /
 
       - name: Conditionally Sync OrangeFox Sources
@@ -180,7 +182,8 @@ jobs:
           echo "🔧 Patching envsetup.sh"
           dos2unix envsetup.sh || true
           sed -i '/echo \[DEBUG\]/d' envsetup.sh || true
-          sed -i 's/\bversion\b/${version:-unknown}/g' envsetup.sh || true
+          # REMOVE or COMMENT OUT THE FOLLOWING LINE. This is likely the cause of the PLATFORM_VERSION issue.
+          # sed -i 's/\bversion\b/${version:-unknown}/g' envsetup.sh || true
           sed -i 's/\bBUILD_VAR_CACHE_READY\b/${BUILD_VAR_CACHE_READY:-false}/g' envsetup.sh || true
 
       - name: Inject Debugging into envsetup.sh
@@ -221,10 +224,10 @@ jobs:
 
           echo "Starting recovery build process..."
 
-          # --- NEW ADDITION/CHANGE HERE ---
           # Export the desired platform version BEFORE sourcing envsetup.sh and running lunch
-          export PLATFORM_VERSION=TQ1A.230205.001.A2
-          # --- END NEW ADDITION/CHANGE ---
+          # TQ1A.230205.001.A2 is for Android 13
+          # SP2A.220305.012 is for Android 12
+          export PLATFORM_VERSION=TQ1A.230205.001.A2 
 
           set +u # Temporarily disable unbound variable check as sourcing might refer to unset variables
           source build/envsetup.sh
