@@ -208,7 +208,7 @@ jobs:
           echo "DEBUG-INJECT: (vendor/twrp/build/envsetup.sh) Result of -s check: $( [ -s \"\$TOP/frameworks/base/services/core/xsd/vts/Android.mk\" ] && echo TRUE || echo FALSE )" >&2;' \
           "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh"
          fi
-          
+
       - name: Build Recovery Image
         run: |
           set -xeuo pipefail # Apply to the entire script. Keep it at the top.
@@ -225,7 +225,7 @@ jobs:
           echo "Starting recovery build process..."
 
           # Export the desired platform version BEFORE sourcing envsetup.sh and running lunch
-          # TQ1A.230205.001.A2 is for Android 13
+          # TQ1A.230205.001.A2 is for Android 13 (recommended for 12.1 branch)
           # SP2A.220305.012 is for Android 12
           export PLATFORM_VERSION=TQ1A.230205.001.A2 
 
@@ -239,6 +239,24 @@ jobs:
           export OUT=$OUT_DIR
 
           echo "Running lunch command: lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}"
+          
+          # --- CRITICAL ADDITIONS/CHANGES HERE ---
+          # These directly address the "version: unbound variable" issue by setting related variables.
+          # For 'eng' variant, TARGET_BUILD_TYPE is typically 'release' or similar, but OrangeFox's envsetup.sh
+          # might be looking for a simpler definition.
+          export TARGET_BUILD_TYPE=release # Or 'userdebug', 'eng' based on the specific OrangeFox envsetup.sh
+          export TARGET_PLATFORM_VERSION="${PLATFORM_VERSION}" # Ensure this is set for build system's internal 'version'
+
+          # For OrangeFox's older envsetup.sh, the 'version' variable might be directly derived from PRODUCT_VERSION_LAST_ELEMENT
+          # or similar. Let's try to set a variable that corresponds to AOSP's internal versioning.
+          # Since you mentioned "AOSP arm64 eng", the 'version' in envsetup.sh usually refers to the 'product_variant' part.
+          # Based on your input: "AOSP arm64 eng"
+          # This line below might be needed if envsetup.sh specifically expects 'version' from PRODUCT_DEVICE-BUILD_VARIANT-ARCHITECTURE
+          # export version="AOSP-${PLATFORM_VERSION}-arm64-eng" # This is speculative and might need adjustment
+          # OR, if envsetup.sh expects "version" to be just the build variant part like "eng"
+          export version="${{ github.event.inputs.BUILD_VARIANT }}" # Set the 'version' variable to your BUILD_VARIANT directly
+          # --- END CRITICAL ADDITIONS/CHANGES ---
+
           lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}
 
           # Check the exit code of lunch. If it failed, exit the script.
@@ -248,7 +266,7 @@ jobs:
           fi
 
           echo "Environment variables after lunch:"
-          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT|TARGET_PLATFORM_VERSION' # Added TARGET_PLATFORM_VERSION to grep
+          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT|TARGET_PLATFORM_VERSION|TARGET_BUILD_TYPE' # Added TARGET_BUILD_TYPE
 
           echo "Starting make recoveryimage..."
           make -j$(nproc) recoveryimage
