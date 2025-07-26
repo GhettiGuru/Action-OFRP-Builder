@@ -1,3 +1,6 @@
+ve."
+        
+      
 name: Recovery Build
 
 on:
@@ -41,10 +44,6 @@ on:
         description: 'Build variant (eng or userdebug)'
         required: true
         default: 'eng'
-      LUNCH_COMBO:
-        description: 'LUNCH_COMBO'
-        required: true
-        default: 'twrp_nx729j-eng'
 
 jobs:
   build:
@@ -111,6 +110,9 @@ jobs:
           echo "CCACHE_DIR=$CCACHE_DIR" >> $GITHUB_ENV
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
+
+      - name: Set LUNCH_COMBO environment variable
+        run: echo "LUNCH_COMBO=${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}" >> $GITHUB_ENV
 
       - name: Conditionally Sync OrangeFox Sources
         run: |
@@ -208,8 +210,8 @@ jobs:
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
 
-          echo "Lunch: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}"
-          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} || exit 1
+          echo "Lunch: $LUNCH_COMBO"
+          lunch $LUNCH_COMBO || exit 1
 
           env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT'
 
@@ -268,5 +270,3 @@ jobs:
       - name: ✅ Done
         if: always()
         run: echo "Build process completed (success or fail). Check artifacts above."
-        
-      
