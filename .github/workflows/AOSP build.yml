@@ -141,13 +141,28 @@ jobs:
       # REPLACED: Old 'Conditionally Sync OrangeFox Sources' step
       # This new step correctly calls orangefox_sync.sh which handles init/sync
       - name: Sync OrangeFox Sources
+        # Add debugging commands to see directory contents and file existence
         run: |
-          # The orangefox_sync.sh script was cloned into workspace/scripts by "Prepare the build environment"
-          # We execute it from there, and tell it where to place the synced files.
-          cd ${{ steps.pwd.outputs.workspace-folder }}/scripts
-          echo "Running orangefox_sync.sh with branch ${{ env.MANIFEST_BRANCH }}"
+          echo "--- Debugging Sync OrangeFox Sources ---"
+          echo "Current directory from GitHub Actions 'working-directory' setting: $(pwd)"
+          
+          echo "Listing contents of the 'scripts' directory:"
+          ls -l "${{ steps.pwd.outputs.workspace-folder }}/scripts"
+          
+          echo "Changing into the 'scripts' directory to execute orangefox_sync.sh"
+          cd "${{ steps.pwd.outputs.workspace-folder }}/scripts"
+          echo "Current directory after 'cd': $(pwd)"
+          
+          echo "Listing contents of current directory again (should be 'scripts' content):"
+          ls -l
+          
+          echo "Checking if orangefox_sync.sh exists and is executable:"
+          [ -f orangefox_sync.sh ] && echo "File 'orangefox_sync.sh' exists." || echo "File 'orangefox_sync.sh' does NOT exist."
+          [ -x orangefox_sync.sh ] && echo "File 'orangefox_sync.sh' is executable." || echo "File 'orangefox_sync.sh' is NOT executable."
+          
+          echo "Attempting to run orangefox_sync.sh..."
           ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ../fox_${{ env.MANIFEST_BRANCH }}
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}/scripts # Explicitly set working directory
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }} # We'll start in 'workspace' and cd into 'scripts'
 
       - name: Clone device tree
         run: |
