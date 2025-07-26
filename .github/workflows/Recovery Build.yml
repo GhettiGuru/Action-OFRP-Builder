@@ -208,46 +208,56 @@ jobs:
           
       - name: Build Recovery Image
         run: |
-          set -xeuo pipefail
+          set -xeuo pipefail # Apply to the entire script. Keep it at the top.
+
+          # Navigate to the workspace first
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          
-          # Initialize build.log *before* sourcing to capture all output
-          # Important: Redirect ALL subsequent output of this step to build.log
-          # and also to stdout for GitHub Actions live log
+
+          # Initialize build.log before redirecting output
+          touch build.log
+
+          # Redirect all subsequent output of this step to build.log and stdout for GitHub Actions live log
           exec > >(tee -a build.log) 2>&1
-          
+
           echo "Starting recovery build process..."
-          
-          set +u # Temporarily disable unbound variable check
+
+          # --- NEW ADDITION/CHANGE HERE ---
+          # Export the desired platform version BEFORE sourcing envsetup.sh and running lunch
+          export PLATFORM_VERSION=TQ1A.230205.001.A2
+          # --- END NEW ADDITION/CHANGE ---
+
+          set +u # Temporarily disable unbound variable check as sourcing might refer to unset variables
           source build/envsetup.sh
-          source vendor/twrp/build/envsetup.sh || true
+          source vendor/twrp/build/envsetup.sh || true # Use || true to prevent job failure if vendor/twrp/build/envsetup.sh is missing
           set -u # Re-enable unbound variable check
-          
+
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
-          
+
           echo "Running lunch command: lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}"
           lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}
+
           # Check the exit code of lunch. If it failed, exit the script.
           if [ $? -ne 0 ]; then
             echo "Lunch command failed!"
             exit 1
           fi
-          
+
           echo "Environment variables after lunch:"
-          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT'
-          
+          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT|TARGET_PLATFORM_VERSION' # Added TARGET_PLATFORM_VERSION to grep
+
           echo "Starting make recoveryimage..."
           make -j$(nproc) recoveryimage
+
           # Check the exit code of make. If it failed, exit the script.
           if [ $? -ne 0 ]; then
             echo "Make recoveryimage failed!"
             exit 1
           fi
           echo "Recovery image build completed."
-        continue-on-error: true # Keep this if you want subsequent steps to run even if build fails
-
+        continue-on-error: true
+        
       - name: Upload recovery image
         if: success()
         uses: actions/upload-artifact@v4
