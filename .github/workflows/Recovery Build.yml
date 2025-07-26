@@ -173,17 +173,30 @@ jobs:
 
       - name: Building recovery
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
           
           touch build.log
           exec > >(tee -a build.log) 2>&1
 
           echo "Starting recovery build process..."
 
-          set +e 
+          set +e # Allow envsetup.sh to have non-fatal errors
           source build/envsetup.sh
-          source vendor/twrp/build/envsetup.sh || true
-          set -e
+          
+          # --- PATCH START for 'version: unbound variable' ---
+          # This patch ensures the 'local version' variable inside the lunch function
+          # is assigned a value. The default parsing logic sometimes skips this assignment
+          # if the variant name doesn't include a numeric version (e.g., "eng" vs "user-12.1").
+          echo "Patching build/envsetup.sh to fix 'version: unbound variable' error..."
+          # The 'a\' command in sed adds lines AFTER the pattern.
+          # We target the 'fi' at the end of the variant parsing block in lunch().
+          # The 'version' variable should be assigned the same value as 'variant' in these cases.
+          # Note: The '        fi$' pattern requires 8 leading spaces to match the exact line.
+          sed -i '/^        fi$/a\        version=${variant}' build/envsetup.sh
+          # --- PATCH END ---
+
+          source vendor/twrp/build/envsetup.sh || true # Use || true to prevent job failure if vendor/twrp/build/envsetup.sh is missing
+          set -e # Re-enable strict error checking
 
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
@@ -198,7 +211,6 @@ jobs:
           fi
 
           echo "Environment variables after lunch:"
-          # DEVICE_NAME will now be present from the derived step
           env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT|TARGET_PLATFORM_VERSION|TARGET_BUILD_TYPE|version|DEVICE_NAME' 
 
           echo "Starting make clean && mka adbd ${BUILD_TARGET}image..."
@@ -210,7 +222,7 @@ jobs:
           fi
           echo "Recovery image build completed."
         continue-on-error: true
-
+        
       - name: Check the output directory before uploading
         run: |
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/
