@@ -172,21 +172,36 @@ jobs:
           
       - name: Build Recovery Image
         run: |
-          set -xeuo pipefail
+          set -xeuo pipefail # Keep these here for general robust shell execution
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
           echo "TARGET_PLATFORM_VERSION := SP2A.220305.012" >> "${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk"
+          
+          # Initialize build.log *before* sourcing to capture all output
           touch build.log
-          set +u
+          
+          # Source envsetup.sh and vendorsetup.sh directly in this shell
+          # to make 'lunch' and other functions available.
+          # Redirect stderr to stdout and then tee to capture all output.
           {
+            set +u # Temporarily disable unbound variable check
             source build/envsetup.sh
-            source vendor/twrp/build/envsetup.sh || true
-          } 2>&1 | tee -a build.log
-          set -u
+            # The vendosetup.sh might not always exist or might error, so use || true
+            source vendor/twrp/build/envsetup.sh || true 
+            set -u # Re-enable unbound variable check
+          } 2>&1 | tee -a build.log # Capture all output from sourcing
+          
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
-          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }}
-          make -j$(nproc) recoveryimage
+          
+          echo "Running lunch..." | tee -a build.log # Log this to file as well
+          lunch ${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_VARIANT }} | tee -a build.log || { echo "Lunch failed!"; exit 1; }
+          
+          echo "TARGET_PRODUCT=$TARGET_PRODUCT" | tee -a build.log
+          echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT" | tee -a build.log
+          echo "TARGET_DEVICE=$TARGET_DEVICE" | tee -a build.log
+          
+          make -j$(nproc) recoveryimage 2>&1 | tee -a build.log # Capture make output
         continue-on-error: true
 
       - name: Save ccache
