@@ -107,6 +107,15 @@ jobs:
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
 
+      - name: Delete repo cache archive to free disk space
+        if: steps.restore-repo-cache.outputs.cache-hit == 'true'
+        run: |
+         echo "Before deletion:"
+         du -sh /home/runner/work/_temp/* || true
+         find /home/runner/work/_temp -name '*.tzst' -exec rm -f {} +
+         echo "After deletion:"
+         df -h /
+
       - name: Conditionally Sync OrangeFox Sources
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}
