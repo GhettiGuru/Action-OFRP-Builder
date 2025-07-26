@@ -227,7 +227,7 @@ jobs:
           # Export the desired platform version BEFORE sourcing envsetup.sh and running lunch
           # TQ1A.230205.001.A2 is for Android 13 (recommended for 12.1 branch)
           # SP2A.220305.012 is for Android 12
-          export PLATFORM_VERSION=SP2A.220305.012
+          export PLATFORM_VERSION=SP2A
 
           set +u # Temporarily disable unbound variable check as sourcing might refer to unset variables
           source build/envsetup.sh
