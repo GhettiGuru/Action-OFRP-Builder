@@ -1,4 +1,4 @@
-name: OrangeFox AOSP BUILD # Workflow name
+name: OrangeFox AOSP BUILD
 
 on:
   workflow_dispatch:
@@ -54,7 +54,7 @@ jobs:
       DEVICE_PATH: ${{ github.event.inputs.DEVICE_PATH }}
       COMMON_TREE_URL: ${{ github.event.inputs.COMMON_TREE_URL }}
       COMMON_PATH: ${{ github.event.inputs.COMMON_PATH }}
-      DEVICE_NAME: '' # This will be derived later
+      DEVICE_NAME: ''
       MAKEFILE_NAME: ${{ github.event.inputs.MAKEFILE_NAME }}
       BUILD_VARIANT: ${{ github.event.inputs.BUILD_VARIANT }}
       BUILD_TARGET: ${{ github.event.inputs.BUILD_TARGET }}
@@ -75,127 +75,42 @@ jobs:
           DERIVED_DEVICE_NAME=$(echo "${{ env.MAKEFILE_NAME }}" | sed 's/^twrp_//')
           echo "DEVICE_NAME=$DERIVED_DEVICE_NAME" >> $GITHUB_ENV
 
-      # --- START Aggressive Disk Space Management ---
-      - name: Check Free Disk Space (Initial)
-        run: |
-          echo "📦 Initial disk usage on runner:"
-          df -h
-
-      - name: Clean up pre-installed software and free disk space (Aggressive)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true      # Removes cached SDKs for various languages (Node, Go, Python, Ruby, etc.)
-          docker-images: true   # Removes large Docker images if you don't use Docker in your build
-          android: true         # **IMPORTANT**: Removes pre-installed Android SDKs. OrangeFox's script will reinstall.
-          dotnet: true
-          haskell: true
-          swap-storage: true    # Removes any existing swap files which consume disk space
-          apt: true             # Cleans apt caches and packages
-          npm: true             # Cleans npm caches
-          # Consider adding other options if `df -h` reveals other large unused components specific to the runner environment.
-          
       - name: Clean Preinstalled Tools
-
         run: |
-
-         sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
-
-         sudo apt-get autoremove -y
-
-         sudo apt-get clean
-
-         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
-
-
+          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
 
       - name: Free up disk space
-
         run: |
-
-         sudo rm -rf /usr/share/dotnet
-
-         sudo rm -rf /usr/local/lib/node_modules ~/.npm
-
-         sudo rm -rf /opt/hostedtoolcache/Python ~/.cache/pip
-
-         docker system prune -a -f
-
-         sudo apt clean
-
-         sudo rm -rf /var/lib/apt/lists/*
-
-         df -h
-
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/node_modules ~/.npm
+          sudo rm -rf /opt/hostedtoolcache/Python ~/.cache/pip
+          docker system prune -a -f
+          sudo apt clean
+          sudo rm -rf /var/lib/apt/lists/*
+          df -h
 
       - name: Clean up pre-installed software and free disk space (Aggressive)
-
         uses: jlumbroso/free-disk-space@main
-
         with:
-
-        tool-cache: true # Removes cached SDKs for various languages (Node, Go, Python, Ruby, etc.)
-
-        docker-images: true # Removes large Docker images if you don't use Docker in your build
-
-        android: true # **IMPORTANT**: Removes pre-installed Android SDKs. OrangeFox's script will reinstall.
-
-        dotnet: true
-
-        haskell: true
-
-        swap-storage: true # Removes any existing swap files which consume disk space
-
-        apt: true # Cleans apt caches and packages
-
-        npm: true # Cleans npm caches
-
-
-      - name: Prepare the build environment
-
-        run: |
-
-         sudo apt update && sudo apt upgrade -y
-
-         DEBIAN_FRONTEND=noninteractive sudo apt install -yq linux-modules-extra-$(uname -r) git python3 tar aria2 git dos2unix gh repo
-
-         git clone https://gitlab.com/OrangeFox/misc/scripts
-
-         cd scripts
-
-         sudo bash setup/android_build_env.sh
-
-         sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh
-
-         sudo bash setup/install_android_sdk.sh
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-  
-      - name: Check Free Disk Space (After Aggressive Cleanup)
-        run: |
-          echo "📦 Disk usage after aggressive cleanup:"
-          df -h
-      # --- END Aggressive Disk Space Management ---
+          tool-cache: true
+          docker-images: true
+          android: true
+          dotnet: true
+          haskell: true
+          swap-storage: true
+          apt: true
+          npm: true
 
       - name: Prepare the build environment
         run: |
-          # The 'linux-modules-extra' might not be available or needed, can cause errors.
-          # Removing it for broader compatibility unless specifically required.
           sudo apt update && sudo apt upgrade -y
-          DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
-            git python3 tar aria2 gh repo \
-            bc bison build-essential ccache flex g++-multilib gcc-multilib \
-            liblz4-tool libncurses5-dev libsdl1.2-dev libxml2 libxml2-utils \
-            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
-            libssl-dev libtinfo5 # Common Android build dependencies
-          
-          # Clone OrangeFox misc scripts for build environment setup
+          DEBIAN_FRONTEND=noninteractive sudo apt install -yq linux-modules-extra-$(uname -r) git python3 tar aria2 git dos2unix gh repo
           git clone https://gitlab.com/OrangeFox/misc/scripts
-          
-          # Run android_build_env.sh from within its directory
           cd scripts
           sudo bash setup/android_build_env.sh
-          
-          # Apply specific patches to install_android_sdk.sh if needed
-          # (Ensure this sed command correctly targets your install_android_sdk.sh)
           sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh
           sudo bash setup/install_android_sdk.sh
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}
@@ -211,7 +126,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ env.MANIFEST_BRANCH }}-${{ hashFiles('build.sh') }} # Ensures cache invalidates on branch/build.sh changes
+          key: ofrp-repo-${{ env.MANIFEST_BRANCH }}-${{ hashFiles('build.sh') }}
           restore-keys: |
             ofrp-repo-${{ env.MANIFEST_BRANCH }}-
             ofrp-repo-
@@ -219,94 +134,47 @@ jobs:
       - name: Restore ccache
         uses: actions/cache@v4
         with:
-          path: ~/.ccache # Standard path for ccache
-          key: ccache-${{ runner.os }}-${{ env.DEVICE_NAME }}-${{ hashFiles('build.sh') }} # Added runner.os and hashFiles for better key
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ env.DEVICE_NAME }}-${{ hashFiles('build.sh') }}
           restore-keys: |
             ccache-${{ runner.os }}-${{ env.DEVICE_NAME }}-
             ccache-${{ runner.os }}-
 
       - name: Configure ccache
         run: |
-          export CCACHE_DIR=~/.ccache # Consistent with restore
+          export CCACHE_DIR=~/.ccache
           mkdir -p "$CCACHE_DIR"
-          ccache --max-size=5G # Increased from 3G, typical for Android builds, adjust as needed
+          ccache --max-size=5G
           echo "CCACHE_DIR=$CCACHE_DIR" >> $GITHUB_ENV
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
-          echo "ccache configured. Current stats:"
           ccache -s
-
-      - name: Check Free Disk Space (Before Sync & After Cache Restore)
-        run: |
-          echo "📦 Disk usage BEFORE OrangeFox sync:"
-          df -h
 
       - name: Sync OrangeFox Sources
         run: |
           set -xe
-          
           BUILD_DIR="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
           TEMP_MANIFEST_TOOLS_DIR="${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
-          
-          echo "Ensuring the main OrangeFox build directory exists: $BUILD_DIR"
           mkdir -p "$BUILD_DIR"
-          
-          echo "Cloning OrangeFox Manifest repository (${{ env.SYNC_URL }}) into $TEMP_MANIFEST_TOOLS_DIR..."
-          git clone --depth=1 "${{ env.SYNC_URL }}" "$TEMP_MANIFEST_TOOLS_DIR" || {
-              echo "❌ Error: Failed to clone OrangeFox Manifest repository from ${{ env.SYNC_URL }}"
-              exit 1
-          }
-          
-          # CORRECTED: Changed directory to the cloned repo root, not a 'misc' subdirectory
-          echo "Executing orangefox_sync.sh from '$TEMP_MANIFEST_TOOLS_DIR' to sync sources to '$BUILD_DIR'..."
-          cd "$TEMP_MANIFEST_TOOLS_DIR" || {
-              echo "❌ Failed to change directory to '$TEMP_MANIFEST_TOOLS_DIR'."
-              exit 1
-          }
-          
-          if [ -f "./orangefox_sync.sh" ]; then
-              ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path "$BUILD_DIR" || {
-                  echo "❌ Error: orangefox_sync.sh failed to execute or sync sources."
-                  exit 1
-              }
-              echo "✅ OrangeFox sources synced successfully."
-          else
-              echo "❌ Error: orangefox_sync.sh not found at './orangefox_sync.sh' within '$TEMP_MANIFEST_TOOLS_DIR'."
-              echo "Please verify the contents of the OrangeFox Manifest repository."
-              exit 1
-          fi
-          
-          echo "Cleanup: Removing temporary Manifest tools clone ($TEMP_MANIFEST_TOOLS_DIR)."
+          git clone --depth=1 "${{ env.SYNC_URL }}" "$TEMP_MANIFEST_TOOLS_DIR"
+          cd "$TEMP_MANIFEST_TOOLS_DIR"
+          ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path "$BUILD_DIR"
           rm -rf "$TEMP_MANIFEST_TOOLS_DIR"
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }} 
-        
-      - name: Check Free Disk Space and .repo Size (After Sync, Before Cache Save)
-        run: |
-          echo "📦 Disk usage AFTER OrangeFox sync and before cache save:"
-          df -h
-          echo ""
-          echo "📏 Size of .repo directory (uncompressed):"
-          # This command directly measures the size of the .repo directory
-          du -sh ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/.repo
-          echo "📏 Size of the entire synced OrangeFox build directory:"
-          du -sh ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
-          echo ""
-          echo "If the .repo directory is consistently over ~30-40GB uncompressed,"
-          echo "it's highly unlikely to compress under the 10GB GitHub Actions cache limit."
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
       - name: Save OrangeFox .repo Cache
-        if: success() # Only save cache if sync was successful
+        if: success()
         id: save-ofrp
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ env.MANIFEST_BRANCH }}-${{ hashFiles('build.sh') }} # Ensures consistency with restore key and added hash
-          
+          key: ofrp-repo-${{ env.MANIFEST_BRANCH }}-${{ hashFiles('build.sh') }}
+
       - name: Save ccache
         uses: actions/cache/save@v4
         with:
           path: ~/.ccache
-          key: ccache-${{ runner.os }}-${{ env.DEVICE_NAME }}-${{ hashFiles('build.sh') }} # Ensures consistency with restore key and added hash
+          key: ccache-${{ runner.os }}-${{ env.DEVICE_NAME }}-${{ hashFiles('build.sh') }}
 
       - name: Clone device tree
         run: |
@@ -318,13 +186,6 @@ jobs:
         run: |
           git clone ${{ env.COMMON_TREE_URL }} -b ${{ env.DEVICE_TREE_BRANCH }} ./${{ env.COMMON_PATH }}
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
-
-      - name: Debug envsetup.sh around line 722
-        run: |
-          BUILD_TOP_PATH="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
-          head -n 730 "$BUILD_TOP_PATH/build/envsetup.sh" | tail -n 21 
-          echo "--- End of envsetup.sh snippet ---"
-        continue-on-error: true
 
       - name: Patch envsetup.sh for compatibility
         run: |
@@ -340,11 +201,6 @@ jobs:
           sed -i '/\[ -s "\$T\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
           echo "DEBUG-INJECT: Checking Android.mk..."' \
           "$BUILD_TOP_PATH/build/envsetup.sh"
-          if [ -f "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh" ]; then
-            sed -i '/\[ -s "\$TOP\/frameworks\/base\/services\/core\/xsd\/vts\/Android.mk" \]/i\
-            echo "DEBUG-INJECT: Checking Android.mk (vendor/twrp)..."' \
-            "$BUILD_TOP_PATH/vendor/twrp/build/envsetup.sh"
-          fi
 
       - name: Building Recovery (Main Device Build)
         if: ${{ env.MAKEFILE_NAME != 'aosp_arm64' }}
@@ -352,17 +208,15 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
           touch build.log
           exec > >(tee -a build.log) 2>&1
-          
           set +e
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
           set -e
-          
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
-          lunch ${{ env.MAKEFILE_NAME }}-${{ env.BUILD_VARIANT }} || { echo "❌ lunch failed"; exit 1; }
-          make clean && mka adbd ${{ env.BUILD_TARGET }}image -j$(nproc --all) || { echo "❌ Make failed"; exit 1; }
+          lunch ${{ env.MAKEFILE_NAME }}-${{ env.BUILD_VARIANT }} || exit 1
+          make clean && mka adbd ${{ env.BUILD_TARGET }}image -j$(nproc --all) || exit 1
 
       - name: Building Recovery (AOSP Arm64 Test)
         if: ${{ env.MAKEFILE_NAME == 'aosp_arm64' }}
@@ -371,23 +225,15 @@ jobs:
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
           touch build.log
           exec > >(tee -a build.log) 2>&1
-          
           set +u
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
           set -u
-          
           export ALLOW_MISSING_DEPENDENCIES=true
           export OUT_DIR=$(pwd)/out
           export OUT=$OUT_DIR
-          lunch aosp_arm64-eng || { echo "❌ lunch failed"; exit 1; }
-          make -j$(nproc) recoveryimage || { echo "❌ Make failed"; exit 1; }
-
-      - name: Check the output directory before uploading
-        run: |
-          echo "Listing contents of the build output directory:"
-          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/ || true
-          ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/ || true
+          lunch aosp_arm64-eng || exit 1
+          make -j$(nproc) recoveryimage || exit 1
 
       - name: Upload recovery image
         if: success()
@@ -405,8 +251,7 @@ jobs:
 
       - name: Show ccache stats
         if: always()
-        run: |
-          ccache -s || echo "⚠️ ccache not installed or failed"
+        run: ccache -s || echo "⚠️ ccache not installed or failed"
 
       - name: Upload to GitHub Release
         if: success()
@@ -415,11 +260,11 @@ jobs:
           files: |
             workspace/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/*.img
             workspace/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/*.zip
-          name: OrangeFox-${{ env.DEVICE_NAME }}-${{ env.OF_VERSION }}-${{ github.run_id }} # Original format
-          tag_name: ${{ env.DEVICE_NAME }}-${{ env.OF_VERSION }}-${{ github.run_id }} # Original format
+          name: OrangeFox-${{ env.DEVICE_NAME }}-${{ env.OF_VERSION }}-${{ github.run_id }}
+          tag_name: ${{ env.DEVICE_NAME }}-${{ env.OF_VERSION }}-${{ github.run_id }}
           body: |
             OrangeFox Recovery Build
-            
+
             **Build Details:**
             - **Manifest URL:** `${{ env.SYNC_URL }}`
             - **Manifest Branch:** `${{ env.MANIFEST_BRANCH }}`
@@ -427,9 +272,8 @@ jobs:
             - **Device Tree:** `${{ env.DEVICE_TREE_URL }} (Branch: ${{ env.DEVICE_TREE_BRANCH }})`
             - **Build Variant:** `${{ env.BUILD_VARIANT }}`
             - **Build Target:** `${{ env.BUILD_TARGET }}`
-            
+
             Generated on ${{ github.event.repository.name }} at workflow run #${{ github.run_id }}
-            
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
