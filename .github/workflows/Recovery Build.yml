@@ -103,24 +103,45 @@ jobs:
           restore-keys: |
             ofrp-repo-
       
-      - name: Conditionally Sync OrangeFox Sources
+      - name: Sync OrangeFox Sources
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}
-          if [ -f fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifest.xml ]; then
-            echo "🟢 .repo cache found - using orangefox_sync.sh for resync"
-            git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
-            cd sync
-            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-          else
-            echo "🔴 .repo cache NOT found - full repo init/sync"
-            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} || {
-              echo "❌ Repo init failed - branch may not exist"
+          BUILD_DIR="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
+          TEMP_TOOLS_DIR="${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
+          
+          echo "Ensuring the OrangeFox build directory exists: $BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          
+          echo "Cloning OrangeFox Manifest repository (${{ env.SYNC_URL }}) into $TEMP_TOOLS_DIR to obtain orangefox_sync.sh..."
+          # The SYNC_URL (https://gitlab.com/OrangeFox/sync.git) is the Manifest repo.
+          # We clone it to a temporary location to get the orangefox_sync.sh script.
+          git clone --depth=1 "${{ env.SYNC_URL }}" "$TEMP_TOOLS_DIR" || {
+              echo "❌ Error: Failed to clone OrangeFox Manifest repository from ${{ env.SYNC_URL }}"
               exit 1
-            }
-            repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
+          }
+          
+          echo "Executing orangefox_sync.sh from '$TEMP_TOOLS_DIR/misc/'..."
+          # Change directory to the temporary Manifest clone, then execute the script from its 'misc' subdirectory.
+          # The '--path' argument tells orangefox_sync.sh where to perform the actual repo init/sync.
+          cd "$TEMP_TOOLS_DIR" || {
+              echo "❌ Failed to change directory to '$TEMP_TOOLS_DIR'."
+              exit 1
+          }
+          
+          if [ -f "./misc/orangefox_sync.sh" ]; then
+              ./misc/orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path "$BUILD_DIR" || {
+                  echo "❌ Error: orangefox_sync.sh failed to execute or sync sources."
+                  exit 1
+              }
+              echo "✅ OrangeFox sources synced successfully."
+          else
+              echo "❌ Error: orangefox_sync.sh not found at './misc/orangefox_sync.sh' within '$TEMP_TOOLS_DIR'."
+              echo "Please verify the contents of the OrangeFox Manifest repository."
+              exit 1
           fi
+          
+          echo "Cleanup: Removing temporary Manifest tools clone ($TEMP_TOOLS_DIR)."
+          rm -rf "$TEMP_TOOLS_DIR"
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }} # Ensure initial context is 'workspace'
           
       - name: Restore ccache
         uses: actions/cache@v4
