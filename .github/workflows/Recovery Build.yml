@@ -104,28 +104,25 @@ jobs:
             ofrp-repo-
       
       - name: Sync OrangeFox Sources
-        # Add debugging commands to see directory contents and file existence
         run: |
-          echo "--- Debugging Sync OrangeFox Sources ---"
-          echo "Current directory from GitHub Actions 'working-directory' setting: $(pwd)"
+          BUILD_DIR="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
           
-          echo "Listing contents of the 'scripts' directory (which is at $(pwd)/scripts):"
-          ls -l "${{ steps.pwd.outputs.workspace-folder }}/scripts"
+          echo "Ensuring the build directory exists: $BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
           
-          echo "Changing into the 'scripts' directory to execute orangefox_sync.sh"
-          cd "${{ steps.pwd.outputs.workspace-folder }}/scripts"
-          echo "Current directory after 'cd': $(pwd)"
+          echo "Cloning OrangeFox Manifest repository (${{ env.SYNC_URL }}) to get orangefox_sync.sh..."
+          # Clone the Manifest repo (which contains orangefox_sync.sh in its misc/ folder)
+          git clone --depth=1 ${{ env.SYNC_URL }} "${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
           
-          echo "Listing contents of current directory again (should be 'scripts' content):"
-          ls -l
+          echo "Executing orangefox_sync.sh from the temporary Manifest clone..."
+          # Change directory to the temporary Manifest clone, then run the script from its 'misc' subdirectory
+          # The --path argument tells orangefox_sync.sh where to perform the actual repo init/sync
+          cd "${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
+          ./misc/orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path "$BUILD_DIR"
           
-          echo "Checking if orangefox_sync.sh exists and is executable at its expected path (./misc/orangefox_sync.sh):"
-          [ -f ./misc/orangefox_sync.sh ] && echo "File './misc/orangefox_sync.sh' exists." || echo "File './misc/orangefox_sync.sh' does NOT exist."
-          [ -x ./misc/orangefox_sync.sh ] && echo "File './misc/orangefox_sync.sh' is executable." || echo "File './misc/orangefox_sync.sh' is NOT executable."
-          
-          echo "Attempting to run orangefox_sync.sh..."
-          ./misc/orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ../fox_${{ env.MANIFEST_BRANCH }} # <--- CORRECTED PATH HERE!
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+          echo "Cleanup: Removing temporary Manifest tools clone."
+          rm -rf "${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }} 
         
       - name: Restore ccache
         uses: actions/cache@v4
