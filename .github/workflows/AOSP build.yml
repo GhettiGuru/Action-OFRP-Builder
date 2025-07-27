@@ -138,26 +138,24 @@ jobs:
           echo "📦 Disk usage AFTER cleanup (by this step):"
           df -h /
 
-      - name: Sync OrangeFox Sources
+      - name: Conditionally Sync OrangeFox Sources
         run: |
-          BUILD_DIR="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
-          
-          echo "Ensuring the build directory exists: $BUILD_DIR"
-          mkdir -p "$BUILD_DIR"
-          
-          echo "Cloning OrangeFox Manifest repository (${{ env.SYNC_URL }}) to get orangefox_sync.sh..."
-          # Clone the Manifest repo (which contains orangefox_sync.sh in its misc/ folder)
-          git clone --depth=1 ${{ env.SYNC_URL }} "${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
-          
-          echo "Executing orangefox_sync.sh from the temporary Manifest clone..."
-          # Change directory to the temporary Manifest clone, then run the script from its 'misc' subdirectory
-          # The --path argument tells orangefox_sync.sh where to perform the actual repo init/sync
-          cd "${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
-          ./misc/orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path "$BUILD_DIR"
-          
-          echo "Cleanup: Removing temporary Manifest tools clone."
-          rm -rf "${{ steps.pwd.outputs.workspace-folder }}/temp_manifest_tools"
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+          cd ${{ steps.pwd.outputs.workspace-folder }}
+          if [ -f fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo/manifest.xml ]; then
+            echo "🟢 .repo cache found - using orangefox_sync.sh for resync"
+            git clone --depth=1 ${{ github.event.inputs.SYNC_URL }} sync
+            cd sync
+            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ../fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+          else
+            echo "🔴 .repo cache NOT found - full repo init/sync"
+            mkdir -p fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            cd fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            repo init -u ${{ github.event.inputs.SYNC_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} || {
+              echo "❌ Repo init failed - branch may not exist"
+              exit 1
+            }
+            repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
+          fi
         
       - name: Clone device tree
         run: |
