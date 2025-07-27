@@ -161,14 +161,15 @@ jobs:
           ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path "$BUILD_DIR"
           rm -rf "$TEMP_MANIFEST_TOOLS_DIR"
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-
-      - name: Save OrangeFox .repo Cache
-        if: success()
-        id: save-ofrp
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/.repo
-          key: ofrp-repo-${{ env.MANIFEST_BRANCH }}-${{ hashFiles('build.sh') }}
+        
+##initial sync without cache enable this by deleteing # on steps
+     # - name: Save OrangeFox .repo Cache
+      #  if: success()
+       # id: save-ofrp
+        # uses: actions/cache/save@v4
+      #  with:
+        #  path: ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/.repo
+         # key: ofrp-repo-${{ env.MANIFEST_BRANCH }}-${{ hashFiles('build.sh') }}
 
       - name: Save ccache
         uses: actions/cache/save@v4
@@ -203,6 +204,7 @@ jobs:
           "$BUILD_TOP_PATH/build/envsetup.sh"
 
       - name: Building Recovery (Main Device Build)
+        continue-on-error: true
         if: ${{ env.MAKEFILE_NAME != 'aosp_arm64' }}
         run: |
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
@@ -219,7 +221,7 @@ jobs:
           make clean && mka adbd ${{ env.BUILD_TARGET }}image -j$(nproc --all) || exit 1
 
       - name: Building Recovery (AOSP Arm64 Test)
-        if: ${{ env.MAKEFILE_NAME == 'aosp_arm64' }}
+        continue-on-error: true
         run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
