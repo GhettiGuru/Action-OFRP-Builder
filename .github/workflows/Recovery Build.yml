@@ -105,16 +105,12 @@ jobs:
       
       - name: Sync OrangeFox Sources
         run: |
-          mkdir OrangeFox_sync
-          cd OrangeFox_sync
-          git clone https://gitlab.com/OrangeFox/sync.git
-          cd sync
-          ./orangefox_sync.sh --branch 12.1 --path ~/fox_12.1
-          
-          echo "Cleanup: Removing temporary Manifest tools clone ($TEMP_TOOLS_DIR)."
-          rm -rf "$TEMP_TOOLS_DIR"
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }} # Ensure initial context is 'workspace'
-          
+         cd ${{ steps.pwd.outputs.workspace-folder }}
+         git clone ${{ github.event.inputs.SYNC_URL }}
+         cd sync
+         ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+        
       - name: Restore ccache
         uses: actions/cache@v4
         with:
