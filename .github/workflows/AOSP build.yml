@@ -182,9 +182,10 @@ jobs:
               exit 1
           }
           
-          echo "Executing orangefox_sync.sh from '$TEMP_MANIFEST_TOOLS_DIR/misc/' to sync sources to '$BUILD_DIR'..."
-          cd "$TEMP_MANIFEST_TOOLS_DIR/misc" || { 
-              echo "❌ Failed to change directory to '$TEMP_MANIFEST_TOOLS_DIR/misc'."
+          # CORRECTED: Changed directory to the cloned repo root, not a 'misc' subdirectory
+          echo "Executing orangefox_sync.sh from '$TEMP_MANIFEST_TOOLS_DIR' to sync sources to '$BUILD_DIR'..."
+          cd "$TEMP_MANIFEST_TOOLS_DIR" || {
+              echo "❌ Failed to change directory to '$TEMP_MANIFEST_TOOLS_DIR'."
               exit 1
           }
           
@@ -195,15 +196,15 @@ jobs:
               }
               echo "✅ OrangeFox sources synced successfully."
           else
-              echo "❌ Error: orangefox_sync.sh not found at './orangefox_sync.sh' within '$TEMP_MANIFEST_TOOLS_DIR/misc'."
+              echo "❌ Error: orangefox_sync.sh not found at './orangefox_sync.sh' within '$TEMP_MANIFEST_TOOLS_DIR'."
               echo "Please verify the contents of the OrangeFox Manifest repository."
               exit 1
           fi
           
           echo "Cleanup: Removing temporary Manifest tools clone ($TEMP_MANIFEST_TOOLS_DIR)."
           rm -rf "$TEMP_MANIFEST_TOOLS_DIR"
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }} 
+        
       - name: Check Free Disk Space and .repo Size (After Sync, Before Cache Save)
         run: |
           echo "📦 Disk usage AFTER OrangeFox sync and before cache save:"
