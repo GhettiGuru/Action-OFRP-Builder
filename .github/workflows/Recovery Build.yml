@@ -103,16 +103,30 @@ jobs:
           restore-keys: |
             ofrp-repo-
       
-      # NEW/REVISED: Sync OrangeFox Sources using orangefox_sync.sh
       - name: Sync OrangeFox Sources
+        # Add debugging commands to see directory contents and file existence
         run: |
-          # Use the orangefox_sync.sh script to handle repo init/sync
-          # The script was cloned into workspace/scripts by "Prepare the build environment"
-          cd ${{ steps.pwd.outputs.workspace-folder }}/scripts
-          echo "Running orangefox_sync.sh with branch ${{ env.MANIFEST_BRANCH }}"
-          ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ../fox_${{ env.MANIFEST_BRANCH }}
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}/scripts # Explicitly set working directory
-
+          echo "--- Debugging Sync OrangeFox Sources ---"
+          echo "Current directory from GitHub Actions 'working-directory' setting: $(pwd)"
+          
+          echo "Listing contents of the 'scripts' directory (which is at $(pwd)/scripts):"
+          ls -l "${{ steps.pwd.outputs.workspace-folder }}/scripts"
+          
+          echo "Changing into the 'scripts' directory to execute orangefox_sync.sh"
+          cd "${{ steps.pwd.outputs.workspace-folder }}/scripts"
+          echo "Current directory after 'cd': $(pwd)"
+          
+          echo "Listing contents of current directory again (should be 'scripts' content):"
+          ls -l
+          
+          echo "Checking if orangefox_sync.sh exists and is executable at its expected path (./misc/orangefox_sync.sh):"
+          [ -f ./misc/orangefox_sync.sh ] && echo "File './misc/orangefox_sync.sh' exists." || echo "File './misc/orangefox_sync.sh' does NOT exist."
+          [ -x ./misc/orangefox_sync.sh ] && echo "File './misc/orangefox_sync.sh' is executable." || echo "File './misc/orangefox_sync.sh' is NOT executable."
+          
+          echo "Attempting to run orangefox_sync.sh..."
+          ./misc/orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ../fox_${{ env.MANIFEST_BRANCH }} # <--- CORRECTED PATH HERE!
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+        
       - name: Restore ccache
         uses: actions/cache@v4
         with:
