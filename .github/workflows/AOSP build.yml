@@ -179,9 +179,26 @@ jobs:
 
       - name: Clone device tree
         run: |
-          git clone ${{ env.DEVICE_TREE_URL }} -b ${{ env.DEVICE_TREE_BRANCH }} ./${{ env.DEVICE_PATH }}
-        working-directory: ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
+          BUILD_ROOT="${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}"
+          TARGET_DIR="$BUILD_ROOT/${{ env.DEVICE_PATH }}" # This is the final location
 
+          echo "Ensuring target directory '$TARGET_DIR' exists."
+          mkdir -p "$TARGET_DIR" || {
+              echo "❌ Error: Failed to create target directory $TARGET_DIR."
+              exit 1
+          }
+
+          echo "Cloning device tree from ${{ env.DEVICE_TREE_URL }} -b ${{ env.DEVICE_TREE_BRANCH }} into $TARGET_DIR..."
+          git clone --depth=1 "${{ env.DEVICE_TREE_URL }}" -b "${{ env.DEVICE_TREE_BRANCH }}" "$TARGET_DIR" || {
+              echo "❌ Error: Failed to clone device tree into $TARGET_DIR."
+              exit 1
+          }
+
+          echo "Device tree should now be at: $TARGET_DIR"
+          ls -la "$TARGET_DIR" # Check what's actually there
+
+        working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+        
       - name: Clone common tree (if provided)
         if: ${{ env.COMMON_TREE_URL != '' && env.COMMON_PATH != '' }}
         run: |
