@@ -239,12 +239,12 @@ jobs:
 
       - name: Building Recovery (AOSP Arm64 Test)
         continue-on-error: true
+        if: ${{ env.MAKEFILE_NAME == 'aosp_arm64' }}
         run: |
           set -xeuo pipefail
           cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
-          touch build.log
-          exec > >(tee -a build.log) 2>&1
           set +u
+          set +e
           source build/envsetup.sh
           source vendor/twrp/build/envsetup.sh || true
           set -u
