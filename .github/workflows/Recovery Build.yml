@@ -82,7 +82,7 @@ jobs:
           
       - name: Clean Preinstalled Tools
         run: |
-          sudo apt remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
+          sudo apt remove -y '^llvm-.*' azure-cli
           sudo apt autoremove -y
           sudo apt clean
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
