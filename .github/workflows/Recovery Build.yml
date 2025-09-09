@@ -31,7 +31,7 @@ on:
       MAKEFILE_NAME: # Input #8
         description: 'MAKEFILE_NAME (e.g., twrp_nx729j or aosp_arm64)'
         required: true
-        default: 'twrp_nx729j'
+        default: 'twrp_NX729J'
       BUILD_VARIANT: # Input #9
         description: 'Build variant (eng or userdebug)'
         required: true
@@ -82,9 +82,9 @@ jobs:
           
       - name: Clean Preinstalled Tools
         run: |
-          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
-          sudo apt-get autoremove -y
-          sudo apt-get clean
+          sudo apt remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
+          sudo apt autoremove -y
+          sudo apt clean
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
           
       - name: Free up disk space
