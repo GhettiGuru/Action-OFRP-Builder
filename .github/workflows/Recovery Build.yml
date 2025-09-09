@@ -21,7 +21,7 @@ on:
       DEVICE_PATH:
         description: 'DEVICE_PATH'
         required: true
-        default: 'device/nubia/NX729J'
+        default: 'device/nubia/nx729j'
       COMMON_TREE_URL:
         description: 'COMMON_TREE_URL (optional)'
         required: false
@@ -31,7 +31,7 @@ on:
       MAKEFILE_NAME: # Input #8
         description: 'MAKEFILE_NAME (e.g., twrp_nx729j or aosp_arm64)'
         required: true
-        default: 'twrp_NX729J'
+        default: 'twrp_nx729j'
       BUILD_VARIANT: # Input #9
         description: 'Build variant (eng or userdebug)'
         required: true
