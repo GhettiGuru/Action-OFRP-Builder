@@ -117,6 +117,12 @@ jobs:
           sudo apt update && sudo apt upgrade -y \
           sudo apt-get install -yq git python3 tar aria2 git gh repo \
               dos2unix autogen autoconf make cmake ninja \
+              bc bison build-essential ccache curl flex g++-multilib \
+            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
+            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+            libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk \
+            aria2 repo gh git dos2unix \
           sudo systemctl daemon-reload \
           git clone https://gitlab.com/OrangeFox/misc/scripts
           cd scripts
