@@ -109,21 +109,13 @@ jobs:
           apt: true
           npm: true
 
-      - name: Prepare the build environment # This step clones misc/scripts to workspace/scripts
+      - name: Prepare the build environment
         run: |
-          sudo snap remove firefox \
-          sudo apt remove firefox \
-          sudo systemctl daemon-reload \
-          sudo apt update && sudo apt upgrade -y \
-          sudo apt-get install -yq git python3 tar aria2 git gh repo \
-              dos2unix autogen autoconf make cmake ninja \
-              bc bison build-essential ccache curl flex g++-multilib \
-            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
-            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
-            libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 \
-            schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk \
-            aria2 repo gh git dos2unix \
-          sudo systemctl daemon-reload \
+          sudo snap remove firefox
+          sudo apt update && sudo apt upgrade -y
+          # Removed linux-modules-extra-$(uname -r) as it's not needed for cross-compilation
+          sudo apt-get install -yq git python3 tar aria2 gh repo dos2unix autogen autoconf make cmake ninja bc bison build-essential ccache curl flex g++-multilib gcc-multilib gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk
+          
           git clone https://gitlab.com/OrangeFox/misc/scripts
           (cd scripts && sudo bash setup/android_build_env.sh && sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh && sudo bash setup/install_android_sdk.sh)
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}
