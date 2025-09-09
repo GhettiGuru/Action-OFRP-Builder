@@ -111,13 +111,15 @@ jobs:
 
       - name: Prepare the build environment # This step clones misc/scripts to workspace/scripts
         run: |
-          sudo snap remove firefox
-          sudo apt remove firefox && sudo systemctl daemon-reload \
-          sudo apt update && sudo apt upgrade -y
+          sudo snap remove firefox \
+          sudo apt remove firefox \
+          sudo systemctl daemon-reload \
+          sudo apt update && sudo apt upgrade -y \
           DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
               linux-modules-extra-$(uname -r) \
-              git python3 tar aria2 git gh repo dos2unix autogen autoconf make cmake ninja \
-          sudo systemctl daemon-reload
+              git python3 tar aria2 git gh repo \ 
+              dos2unix autogen autoconf make cmake ninja \
+          sudo systemctl daemon-reload \
           git clone https://gitlab.com/OrangeFox/misc/scripts
           cd scripts
           sudo bash setup/android_build_env.sh
