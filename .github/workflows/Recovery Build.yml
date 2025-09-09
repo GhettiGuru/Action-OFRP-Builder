@@ -98,11 +98,15 @@ jobs:
 
       - name: Prepare the build environment
         run: |
-          sudo snap remove firefox
-          sudo apt update && sudo apt upgrade -y
-          # Removed linux-modules-extra-$(uname -r) as it's not needed for cross-compilation
-          sudo apt-get install -yq git python3 tar aria2 gh repo dos2unix autogen autoconf make cmake ninja bc bison build-essential ccache curl flex g++-multilib gcc-multilib gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libtinfo5 libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk
+          # Remove Firefox to save time and prevent updates
+          sudo snap remove firefox || true
+          sudo apt remove firefox || true
           
+          # Update package lists and install all dependencies in a single command
+          sudo apt update && sudo apt upgrade -y
+          sudo apt-get install -yq git python3 tar aria2 gh repo dos2unix autogen autoconf make cmake ninja-build bc bison build-essential ccache curl flex g++-multilib gcc-multilib gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libwxgtk3.0-gtk3-dev lzop pngcrush python-is-python3 schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk
+          
+          # Clone and run the OrangeFox setup scripts
           git clone https://gitlab.com/OrangeFox/misc/scripts
           (cd scripts && sudo bash setup/android_build_env.sh && sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh && sudo bash setup/install_android_sdk.sh)
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}
