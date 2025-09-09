@@ -77,6 +77,7 @@ jobs:
 
       - name: Prepare the build environment # This step clones misc/scripts to workspace/scripts
         run: |
+          sudo snap remove firefox
           sudo apt update && sudo apt upgrade -y
           DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
               linux-modules-extra-$(uname -r) \
