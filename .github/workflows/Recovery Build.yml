@@ -21,7 +21,7 @@ on:
       DEVICE_PATH:
         description: 'DEVICE_PATH'
         required: true
-        default: 'device/nubia/nx729j'
+        default: 'device/nubia/NX729J'
       COMMON_TREE_URL:
         description: 'COMMON_TREE_URL (optional)'
         required: false
@@ -115,7 +115,7 @@ jobs:
           sudo apt update && sudo apt upgrade -y
           DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
               linux-modules-extra-$(uname -r) \
-              git python3 tar aria2 git gh repo
+              git python3 tar aria2 git gh repo dos2unix autogen autoconf make cmake ninja
           git clone https://gitlab.com/OrangeFox/misc/scripts
           cd scripts
           sudo bash setup/android_build_env.sh
@@ -153,6 +153,7 @@ jobs:
           key: ccache-${{ env.DEVICE_NAME }}-${{ github.sha }}
           restore-keys: |
             ccache-${{ env.DEVICE_NAME }}-
+            
       - name: Configure ccache
         run: |
           export CCACHE_DIR=${{ github.workspace }}/.ccache
@@ -161,6 +162,7 @@ jobs:
           echo "CCACHE_DIR=$CCACHE_DIR" >> $GITHUB_ENV
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
+          
       - name: Check & Free Disk Space
         run: |
           echo "📦 Disk usage BEFORE cleanup:"
