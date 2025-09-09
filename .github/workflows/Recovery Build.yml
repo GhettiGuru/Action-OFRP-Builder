@@ -124,10 +124,10 @@ jobs:
             schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk \
             aria2 repo gh git dos2unix \
           sudo systemctl daemon-reload \
-          git clone https://gitlab.com/OrangeFox/misc/scripts
-          cd scripts
+          git clone https://gitlab.com/OrangeFox/misc/scripts \
+          cd scripts \
           sudo bash setup/android_build_env.sh
-          sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh
+          sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh \
           sudo bash setup/install_android_sdk.sh
         working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
