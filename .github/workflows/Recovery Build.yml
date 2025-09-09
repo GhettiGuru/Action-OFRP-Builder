@@ -75,6 +75,40 @@ jobs:
           echo "Derived DEVICE_NAME: $DERIVED_DEVICE_NAME"
           echo "DEVICE_NAME=$DERIVED_DEVICE_NAME" >> $GITHUB_ENV
 
+      - name: Derive DEVICE_NAME from MAKEFILE_NAME
+        run: |
+          DERIVED_DEVICE_NAME=$(echo "${{ env.MAKEFILE_NAME }}" | sed 's/^twrp_//')
+          echo "DEVICE_NAME=$DERIVED_DEVICE_NAME" >> $GITHUB_ENV
+          
+      - name: Clean Preinstalled Tools
+        run: |
+          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' azure-cli google-cloud-sdk
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc ~/.cargo ~/.rustup
+          
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/node_modules ~/.npm
+          sudo rm -rf /opt/hostedtoolcache/Python ~/.cache/pip
+          docker system prune -a -f
+          sudo apt clean
+          sudo rm -rf /var/lib/apt/lists/*
+          df -h
+          
+      - name: Clean up pre-installed software and free disk space (Aggressive)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          docker-images: true
+          android: true
+          dotnet: true
+          haskell: true
+          swap-storage: true
+          apt: true
+          npm: true
+
       - name: Prepare the build environment # This step clones misc/scripts to workspace/scripts
         run: |
           sudo snap remove firefox
