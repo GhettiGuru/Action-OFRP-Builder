@@ -115,10 +115,8 @@ jobs:
           sudo apt remove firefox \
           sudo systemctl daemon-reload \
           sudo apt update && sudo apt upgrade -y \
-          DEBIAN_FRONTEND=noninteractive sudo apt-get install -yq \
-              linux-modules-extra-$(uname -r) \
-              git python3 tar aria2 git gh repo \ 
-              dos2unix autogen autoconf make cmake ninja -y \
+          sudo apt-get install -yq git python3 tar aria2 git gh repo \
+              dos2unix autogen autoconf make cmake ninja \
           sudo systemctl daemon-reload \
           git clone https://gitlab.com/OrangeFox/misc/scripts
           cd scripts
