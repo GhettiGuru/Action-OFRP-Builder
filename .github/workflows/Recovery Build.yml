@@ -43,7 +43,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04 # Still Ubuntu 24.04
+    runs-on: ubuntu-22.04 # Still Ubuntu 24.04
     env:
       OF_VERSION: R12.1
       SYNC_URL: ${{ github.event.inputs.SYNC_URL }} # This will be ignored by orangefox_sync.sh
