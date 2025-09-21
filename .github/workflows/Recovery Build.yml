@@ -194,17 +194,17 @@ jobs:
           echo "--- End of envsetup.sh snippet ---"
         continue-on-error: true
 
-      - name: Patch envsetup.sh for compatibility
-        run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/build
-          echo "🔧 Patching envsetup.sh"
-          dos2unix envsetup.sh || true
-          sed -i '/echo \[DEBUG\]/d' envsetup.sh || true
-          sed -i 's/\bBUILD_VAR_CACHE_READY\b/${BUILD_VAR_CACHE_READY:-false}/g' envsetup.sh || true
+     # - name: Patch envsetup.sh for compatibility
+    #    run: |
+      #    cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/build
+       #   echo "🔧 Patching envsetup.sh"
+      #    dos2unix envsetup.sh || true
+     #     sed -i '/echo \[DEBUG\]/d' envsetup.sh || true
+     #     sed -i 's/\bBUILD_VAR_CACHE_READY\b/${BUILD_VAR_CACHE_READY:-false}/g' envsetup.sh || true
           
           # --- PATCH FOR 'version: unbound variable' (consolidated here) ---
-          echo "Applying 'version=${variant}' patch to build/envsetup.sh..."
-          sed -i '/^        fi$/a\        version=${variant}' envsetup.sh
+      #    echo "Applying 'version=${variant}' patch to build/envsetup.sh..."
+     #     sed -i '/^        fi$/a\        version=${variant}' envsetup.sh
           # --- END PATCH ---
 
       - name: Inject Debugging into envsetup.sh
@@ -230,46 +230,35 @@ jobs:
 
       - name: Building recovery
         run: |
-          cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
-          
-          touch build.log
-          exec > >(tee -a build.log) 2>&1
-          echo "Starting recovery build process..."
-          set +e # Allow envsetup.sh to have non-fatal errors
-          source build/envsetup.sh
-          
-          # --- PATCH START for 'version: unbound variable' ---
-          # This patch ensures the 'local version' variable inside the lunch function
-          # is assigned a value. The default parsing logic sometimes skips this assignment
-          # if the variant name doesn't include a numeric version (e.g., "eng" vs "user-12.1").
-          echo "Patching build/envsetup.sh to fix 'version: unbound variable' error..."
-          # The 'a\' command in sed adds lines AFTER the pattern.
-          # We target the 'fi' at the end of the variant parsing block in lunch().
-          # The 'version' variable should be assigned the same value as 'variant' in these cases.
-          # Note: The '        fi$' pattern requires 8 leading spaces to match the exact line.
-          sed -i '/^        fi$/a\        version=${variant}' build/envsetup.sh
-          # --- PATCH END ---
-          source vendor/twrp/build/envsetup.sh || true # Use || true to prevent job failure if vendor/twrp/build/envsetup.sh is missing
-          set -e # Re-enable strict error checking
-          export ALLOW_MISSING_DEPENDENCIES=true
-          export OUT_DIR=$(pwd)/out
-          export OUT=$OUT_DIR
-          echo "Running lunch command: lunch ${{ env.MAKEFILE_NAME }}-${{ env.BUILD_VARIANT }}"
-          lunch ${{ env.MAKEFILE_NAME }}-${{ env.BUILD_VARIANT }}
-          if [ $? -ne 0 ]; then
-            echo "Lunch command failed!"
-            exit 1
-          fi
-          echo "Environment variables after lunch:"
-          env | grep -E 'TARGET_PRODUCT|TARGET_BUILD_VARIANT|TARGET_DEVICE|OUT|TARGET_PLATFORM_VERSION|TARGET_BUILD_TYPE|version|DEVICE_NAME' 
-          echo "Starting make clean && mka adbd ${BUILD_TARGET}image..."
-          make clean && mka adbd ${{ env.BUILD_TARGET }}image -j$(nproc --all)
-          if [ $? -ne 0 ]; then
-            echo "Make failed!"
-            exit 1
-          fi
-          echo "Recovery image build completed."
+         cd ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}
+         touch build.log
+         exec > >(tee -a build.log) 2>&1
+         echo "Starting recovery build process..."
+         export ALLOW_MISSING_DEPENDENCIES=true
+         export OUT_DIR=$(pwd)/out
+         export OUT=$OUT_DIR
+         export TARGET_PRODUCT=${{ env.MAKEFILE_NAME }}
+         export TARGET_BUILD_VARIANT=${{ env.BUILD_VARIANT }}
+         export TARGET_DEVICE=${{ env.DEVICE_NAME }}
+         export TARGET_PLATFORM_VERSION=12.1  # This fixes the main error
+    
+         echo "Using manual environment setup:"
+         echo "TARGET_PRODUCT=$TARGET_PRODUCT"
+         echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
+         echo "TARGET_DEVICE=$TARGET_DEVICE"
+         echo "TARGET_PLATFORM_VERSION=$TARGET_PLATFORM_VERSION"
+         set +e
+         source build/envsetup.sh
+         set -e
+         echo "Starting make recoveryimage..."
+         make -j$(nproc --all) recoveryimage
+         if [ $? -ne 0 ]; then
+         echo "Make failed!"
+         exit 1
+         fi
+         echo "Recovery image build completed."
         continue-on-error: true
+        
       - name: Check the output directory before uploading
         run: |
           ls -al ${{ steps.pwd.outputs.workspace-folder }}/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/
